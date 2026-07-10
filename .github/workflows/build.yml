@@ -56,6 +56,14 @@ jobs:
           else
             validate_jar core/lib/RoyaleEconomyAPI.jar "RoyaleEconomyAPI"
           fi
+          echo "Downloading CoinsEngine..."
+          if ! wget -q -O core/lib/CoinsEngine-2.7.0.jar \
+            "https://hangar.papermc.io/api/v1/projects/NightExpress/ExcellentEconomy/versions/2.7.0/PAPER/download"; then
+            echo "CoinsEngine download failed"
+            exit 1
+          else
+            validate_jar core/lib/CoinsEngine-2.7.0.jar "CoinsEngine" || exit 1
+          fi
           echo "Downloading SCore..."
           if ! wget -q -O core/lib/SCore-5.26.5.17.jar \
             "https://cdn-alt.modrinth.com/data/ZfcV7L06/versions/ddOkhdsg/SCore-5.26.5.17.jar?mr_download_reason=standalone"; then
