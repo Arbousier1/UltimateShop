@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  JAVA_VERSION: '21'
+  BUILD_JAVA_VERSION: '25'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: ${{ env.BUILD_JAVA_VERSION }}
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -56,14 +56,6 @@ jobs:
           else
             validate_jar core/lib/RoyaleEconomyAPI.jar "RoyaleEconomyAPI"
           fi
-          echo "Downloading CoinsEngine..."
-          if ! wget -q -O core/lib/CoinsEngine-2.7.0.jar \
-            "https://hangar.papermc.io/api/v1/projects/NightExpress/ExcellentEconomy/versions/2.7.0/PAPER/download"; then
-            echo "CoinsEngine download failed"
-            exit 1
-          else
-            validate_jar core/lib/CoinsEngine-2.7.0.jar "CoinsEngine" || exit 1
-          fi
           echo "Downloading SCore..."
           if ! wget -q -O core/lib/SCore-5.26.5.17.jar \
             "https://cdn-alt.modrinth.com/data/ZfcV7L06/versions/ddOkhdsg/SCore-5.26.5.17.jar?mr_download_reason=standalone"; then
@@ -93,6 +85,12 @@ jobs:
           gradle :core:testDecayExtended --no-daemon
           gradle :core:testPureUtils --no-daemon
           gradle clean shadowJar --no-daemon
+          if ! javap -verbose -classpath core/build/classes/java/main \
+            cn.superiormc.ultimateshop.hooks.economy.EconomyExcellentEconomyHook \
+            | grep "major version: 65" >/dev/null; then
+            echo "Build output is not compatible with Java 21"
+            exit 1
+          fi
           JAR_FILE=$(find plugin/build/libs -name "UltimateShop-*.jar" ! -name "*sources.jar" ! -name "*javadoc.jar" | head -1)
           if [ -n "$JAR_FILE" ]; then
             echo "Build successful!"

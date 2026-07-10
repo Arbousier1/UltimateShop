@@ -677,7 +677,7 @@ UltimateShop manages economy hooks and item hooks through `HookManager`.
 
 Built-in implementations are auto-registered at startup, for example:
 
-* Economy: Vault, PlayerPoints, CoinsEngine, UltraEconomy, and more
+* Economy: Vault, PlayerPoints, ExcellentEconomy, UltraEconomy, and more
 * Items: ItemsAdder, Oraxen, MMOItems, EcoItems, Nexo, CraftEngine, and more
 
 But `HookManager` also exposes public registration methods:
@@ -712,7 +712,7 @@ buy-prices:
     placeholder: '{amount} Gems'
 ```
 
-Single-currency hooks like Vault will usually ignore `currencyID`, while multi-currency hooks like CoinsEngine use it to resolve the specific currency.
+Single-currency hooks like Vault will usually ignore `currencyID`, while multi-currency hooks like ExcellentEconomy use it to resolve the specific currency.
 
 Minimal example:
 
@@ -810,7 +810,7 @@ If you want working examples to copy from, the best built-in references are:
 
 * Economy hooks:
   * `EconomyVaultHook`: single currency, services-manager based
-  * `EconomyCoinsEngineHook`: multi-currency, explicitly uses `currencyID`
+  * `EconomyExcellentEconomyHook`: multi-currency, explicitly uses `currencyID`
 * Item hooks:
   * `ItemItemsAdderHook`: simple ID -> ItemStack and ItemStack -> ID
   * `ItemMMOItemsHook`: composite ID format using `TYPE;;ID`

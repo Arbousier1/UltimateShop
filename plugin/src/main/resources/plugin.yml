@@ -22,7 +22,6 @@ softdepend:
   - Vault
   - PlayerPoints
   - UltraEconomy
-  - CoinsEngine
   - ExcellentEconomy
   - RedisEconomy
   - RoyaleEconomy

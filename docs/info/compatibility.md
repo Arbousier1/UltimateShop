@@ -25,13 +25,17 @@ You can use ItemBridge as custom item provider which supports more custom item p
 ### <mark style="color:red;">Directly</mark> supported economy plugins list
 
 * PlayerPoints
-* CoinsEngine
+* ExcellentEconomy
 * UltraEconomy
 * EcoBits
 * PEconomy
 * RedisEconomy
 * RoyaleEconomy
 * VotingPlugin
+
+{% hint style="info" %}
+ExcellentEconomy 2.8.0 itself requires Java 25 and Minecraft 1.21.8 or newer. UltimateShop remains compatible with Java 21 when this hook is not used.
+{% endhint %}
 
 The following provides an example of directly obtaining items from the **ItemsAdder** plugin through the direct compatibility feature in **ItemFormat** and using economy from **Vault** plugin in **EconomyFormat**:
 

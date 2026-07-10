@@ -66,9 +66,6 @@ public class HookManager {
         if (CommonUtil.checkPluginLoad("PlayerPoints")) {
             registerNewEconomyHook("PlayerPoints", new EconomyPlayerPointsHook());
         }
-        if (CommonUtil.checkPluginLoad("CoinsEngine")) {
-            registerNewEconomyHook("CoinsEngine", new EconomyCoinsEngineHook());
-        }
         if (CommonUtil.checkPluginLoad("ExcellentEconomy")) {
             registerNewEconomyHook("ExcellentEconomy", new EconomyExcellentEconomyHook());
         }

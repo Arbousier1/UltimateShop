@@ -32,7 +32,7 @@ dependencies {
     }
     compileOnly("com.github.ankhorg:NeigeItems-Kotlin:1.16.8")
     compileOnly("io.lumine:Mythic-Dist:5.9.5")
-    compileOnly(files("lib/CoinsEngine-2.7.0.jar"))
+    compileOnly("su.nightexpress.excellenteconomy:ExcellentEconomy:2.8.0")
     compileOnly("me.TechsCode:UltraEconomyAPI:1.1.2")
     compileOnly("com.willfp:EcoBits:1.8.4")
     compileOnly(files("lib/RoyaleEconomyAPI.jar"))
