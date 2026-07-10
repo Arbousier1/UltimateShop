@@ -2,8 +2,6 @@ package cn.superiormc.ultimateshop.methods;
 
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.api.ShopHelper;
-import cn.superiormc.ultimateshop.gui.AbstractGUI;
-import cn.superiormc.ultimateshop.gui.GUIStatus;
 import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
@@ -11,13 +9,12 @@ import cn.superiormc.ultimateshop.methods.Product.BuyProductMethod;
 import cn.superiormc.ultimateshop.methods.Product.SellProductMethod;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
 import cn.superiormc.ultimateshop.objects.buttons.subobjects.ObjectDisplayItemStack;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.objects.caches.ObjectUseTimesCache;
 import cn.superiormc.ultimateshop.objects.items.ThingMode;
 import cn.superiormc.ultimateshop.objects.items.prices.ObjectPrices;
 import cn.superiormc.ultimateshop.objects.menus.MenuType;
-import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -33,7 +30,7 @@ public class ModifyDisplayItem {
                                                     ObjectDisplayItemStack addLoreDisplayItem,
                                                     ObjectItem item,
                                                     boolean buyMore) {
-        return modifyItem(player, multi, addLoreDisplayItem, item, buyMore, "general");
+        return modifyItem(player, multi, addLoreDisplayItem, item, buyMore, false, "general");
     }
 
     public static ObjectDisplayItemStack modifyItem(Player player,
@@ -41,6 +38,7 @@ public class ModifyDisplayItem {
                                                     ObjectDisplayItemStack addLoreDisplayItem,
                                                     ObjectItem item,
                                                     boolean buyMore,
+                                                    boolean bedrock,
                                                     String clickType) {
         if (clickType == null) {
             clickType = "general";
@@ -64,7 +62,7 @@ public class ModifyDisplayItem {
                     "amount", String.valueOf(multi),
                     "item-name", item.getDisplayName(player)));
         }
-        addLore.addAll(getModifiedLore(player, multi, item, buyMore, false, clickType));
+        addLore.addAll(getModifiedLore(player, multi, item, buyMore, bedrock, clickType));
         if (!addLore.isEmpty()) {
             UltimateShop.methodUtil.setItemLore(tempVal2, addLore, player);
         }
@@ -83,7 +81,11 @@ public class ModifyDisplayItem {
 
         List<String> resultLore = new ArrayList<>();
 
-        ObjectUseTimesCache playerCache = CacheManager.cacheManager.getObjectCache(player).getUseTimesCache(item);
+        ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+        if (cache == null) {
+            return resultLore;
+        }
+        ObjectUseTimesCache playerCache = cache.getUseTimesCache(item);
         ObjectUseTimesCache serverCache = CacheManager.cacheManager.serverCache.getUseTimesCache(item);
 
         Map<Character, ConditionResolver> conditionResolvers = buildConditionResolvers(player, item, clickType, buyMore, bedrock, playerCache, serverCache);
@@ -93,7 +95,7 @@ public class ModifyDisplayItem {
                         playerCache.getBuyUseTimes(), multi, true).getResultMap(),
                 item.getBuyPrice().getMode(), false);
         List<String> sellPrice = ObjectPrices.getDisplayName(player, multi,
-                item.getSellPrice().give(player, playerCache.getBuyUseTimes(), multi).getResultMap(),
+                item.getSellPrice().give(player, playerCache.getBuyUseTimes(), multi).getResultMapForSellMultiplierDisplay(player),
                 item.getSellPrice().getMode(), false);
 
         for (String rawLine : item.getAddLore(player)) {
@@ -373,6 +375,7 @@ public class ModifyDisplayItem {
 
         map.put('u', ignored -> parseClickType(item, clickType, true));
         map.put('v', ignored -> parseClickType(item, clickType, false));
+        map.put('w', ignored -> !clickType.equals("general"));
 
         map.put('x', ignored -> bedrock);
         map.put('y', ignored -> !bedrock);

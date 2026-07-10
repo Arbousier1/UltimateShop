@@ -1,12 +1,13 @@
 package cn.superiormc.ultimateshop.objects.caches;
 
-import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
+import cn.superiormc.ultimateshop.managers.DatabaseManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
 import cn.superiormc.ultimateshop.objects.items.subobjects.ObjectCustomPlaceholder;
 import cn.superiormc.ultimateshop.objects.items.subobjects.ObjectRandomPlaceholder;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
+import cn.superiormc.ultimateshop.utils.TextUtil;
 import org.bukkit.entity.Player;
 
 import java.util.Collections;
@@ -32,36 +33,52 @@ public class ObjectCache {
 
     private final Player player;
 
+    private volatile boolean initialized = false;
+
+    private volatile boolean ready = false;
+
+    private volatile boolean closed = false;
+
     public ObjectCache() {
         this.server = true;
         this.player = null;
-        initCache();
     }
 
     public ObjectCache(Player player) {
         this.server = false;
         this.player = player;
-        initCache();
     }
 
     public void initCache() {
-        CacheManager.cacheManager.database.checkData(this);
+        if (closed || initialized) {
+            return;
+        }
+        initialized = true;
+        DatabaseManager.databaseManager.database.checkData(this);
     }
 
     public void shutCache(boolean quitServer) {
-        CacheManager.cacheManager.database.updateData(this, quitServer);
-
-        if (quitServer && ConfigManager.configManager.getBoolean("use-times.auto-reset-mode")) {
-            sharedUseTimesCache.values().forEach(ObjectUseTimesCache::cancelResetTime);
+        if (canNotModify()) {
+            return;
+        }
+        DatabaseManager.databaseManager.database.updateData(this, quitServer);
+        if (quitServer) {
+            cancelResetTasks();
         }
     }
 
     public void shutCacheOnDisable(boolean disable) {
-        CacheManager.cacheManager.database.updateDataOnDisable(this, disable);
-
-        if (disable && ConfigManager.configManager.getBoolean("use-times.auto-reset-mode")) {
-            sharedUseTimesCache.values().forEach(ObjectUseTimesCache::cancelResetTime);
+        if (canNotModify()) {
+            return;
         }
+        DatabaseManager.databaseManager.database.updateDataOnDisable(this, disable);
+        cancelResetTasks();
+    }
+
+    public synchronized void cancelResetTasks() {
+        closed = true;
+        sharedUseTimesCache.values().forEach(ObjectUseTimesCache::cancelResetTime);
+        randomPlaceholderCache.values().forEach(ObjectRandomPlaceholderCache::cancelResetTask);
     }
 
     /*
@@ -69,7 +86,7 @@ public class ObjectCache {
      */
     public ObjectUseTimesCache getUseTimesCache(ObjectItem item) {
         if (item == null) {
-            return null;
+            return new ObjectUseTimesCache(this);
         }
 
         return useTimesCache.computeIfAbsent(item, key -> {
@@ -99,26 +116,29 @@ public class ObjectCache {
                     null,
                     null,
                     null,
-                    key,
-                    true);
+                    key
+            );
             sharedUseTimesCache.put(storageKey, created);
             return created;
         });
     }
 
-    public void setUseTimesCache(String shop,
-                                 String product,
-                                 int buyUseTimes,
-                                 int totalBuyUseTimes,
-                                 int sellUseTimes,
-                                 int totalSellUseTimes,
-                                 String lastBuyTime,
-                                 String lastSellTime,
-                                 String lastResetBuyTime,
-                                 String lastResetSellTime,
-                                 String cooldownBuyTime,
-                                 String cooldownSellTime) {
-        sharedUseTimesCache.put(new UseTimesStorageKey(shop, product), new ObjectUseTimesCache(
+    public synchronized void setUseTimesCache(String shop,
+                                              String product,
+                                              int buyUseTimes,
+                                              int totalBuyUseTimes,
+                                              int sellUseTimes,
+                                              int totalSellUseTimes,
+                                              String lastBuyTime,
+                                              String lastSellTime,
+                                              String lastResetBuyTime,
+                                              String lastResetSellTime,
+                                              String cooldownBuyTime,
+                                              String cooldownSellTime) {
+        if (closed) {
+            return;
+        }
+        ObjectUseTimesCache created = new ObjectUseTimesCache(
                 this,
                 buyUseTimes,
                 totalBuyUseTimes,
@@ -130,8 +150,17 @@ public class ObjectCache {
                 lastResetSellTime,
                 cooldownBuyTime,
                 cooldownSellTime,
-                null,
-                false));
+                null
+        );
+        ObjectUseTimesCache previous = sharedUseTimesCache.put(new UseTimesStorageKey(shop, product), created);
+        if (previous != null) {
+            ObjectItem boundProduct = previous.getProduct();
+            if (boundProduct != null) {
+                created.bindProduct(boundProduct);
+                useTimesCache.replaceAll((item, cache) -> cache == previous ? created : cache);
+            }
+            previous.cancelResetTime();
+        }
     }
 
     public Map<ObjectItem, ObjectUseTimesCache> getUseTimesCache() {
@@ -184,10 +213,13 @@ public class ObjectCache {
         if (!checkPlaceholderScope(placeholder)) {
             return null;
         }
-        return randomPlaceholderCache.computeIfAbsent(
-                placeholder,
-                key -> new ObjectRandomPlaceholderCache(this, placeholder)
-        );
+        ObjectRandomPlaceholderCache existingCache = randomPlaceholderCache.get(placeholder);
+        if (existingCache != null) {
+            return existingCache;
+        }
+        ObjectRandomPlaceholderCache createdCache = new ObjectRandomPlaceholderCache(this, placeholder);
+        ObjectRandomPlaceholderCache racedCache = randomPlaceholderCache.putIfAbsent(placeholder, createdCache);
+        return racedCache == null ? createdCache : racedCache;
     }
 
     private boolean checkPlaceholderScope(ObjectRandomPlaceholder placeholder) {
@@ -381,5 +413,23 @@ public class ObjectCache {
 
     public boolean isServer() {
         return server;
+    }
+
+    public void close() {
+        closed = true;
+        if (player != null) {
+            TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fUnloaded player data: " + player.getName() + ".");
+        }
+    }
+
+    public void ready() {
+        ready = true;
+        if (player != null) {
+            TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fLoaded player data: " + player.getName() + ".");
+        }
+    }
+
+    public boolean canNotModify() {
+        return closed || !ready;
     }
 }

@@ -26,6 +26,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -75,6 +77,11 @@ public class SQLDatabase extends AbstractDatabase {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
         }
+        if (dialect != null) {
+            dialect.closeDrivers();
+        }
+        dataSource = null;
+        dialect = null;
     }
 
     private void initDialect(String jdbcUrl) {
@@ -101,6 +108,10 @@ public class SQLDatabase extends AbstractDatabase {
             if (!UltimateShop.freeVersion) {
                 stmt.execute(dialect.createRandomPlaceholderTable());
                 stmt.execute(dialect.createCustomPlaceholderTable());
+                stmt.execute(dialect.createTransactionLogTable());
+                for (String indexSql : dialect.createTransactionLogIndexes()) {
+                    stmt.execute(indexSql);
+                }
             }
 
             addHistoryColumns(conn);
@@ -128,7 +139,7 @@ public class SQLDatabase extends AbstractDatabase {
     public void checkData(ObjectCache cache) {
         CompletableFuture.runAsync(
                 () -> loadData(cache),
-                DatabaseExecutor.EXECUTOR
+                DatabaseExecutor.getExecutor()
         );
     }
 
@@ -147,6 +158,7 @@ public class SQLDatabase extends AbstractDatabase {
                 loadCustomPlaceholders(conn, cache, playerUUID);
             }
 
+            cache.ready();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -297,9 +309,9 @@ public class SQLDatabase extends AbstractDatabase {
                 saveCustomPlaceholders(cache);
             }
             if (quitServer) {
-                CacheManager.cacheManager.removeObjectCache(cache.getPlayer());
+                CacheManager.cacheManager.removeObjectCache(cache);
             }
-        }, DatabaseExecutor.EXECUTOR);
+        }, DatabaseExecutor.getExecutor());
     }
 
     private void saveFavourites(ObjectCache cache) {
@@ -543,6 +555,41 @@ public class SQLDatabase extends AbstractDatabase {
             saveCustomPlaceholders(cache);
         }
 
-        CacheManager.cacheManager.removeObjectCache(cache.getPlayer());
+        CacheManager.cacheManager.removeObjectCache(cache);
+    }
+
+    public void logTransaction(LocalDateTime createdAt,
+                               String playerUuid,
+                               String playerName,
+                               String shopId,
+                               String shopName,
+                               String itemId,
+                               String itemName,
+                               String action,
+                               int amount,
+                               double multiplier,
+                               String priceText) {
+        if (dataSource == null || dialect == null) {
+            return;
+        }
+        DatabaseExecutor.getExecutor().execute(() -> {
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(dialect.insertTransactionLog())) {
+                ps.setTimestamp(1, Timestamp.valueOf(createdAt));
+                ps.setString(2, playerUuid);
+                ps.setString(3, playerName);
+                ps.setString(4, shopId);
+                ps.setString(5, shopName);
+                ps.setString(6, itemId);
+                ps.setString(7, itemName);
+                ps.setString(8, action);
+                ps.setInt(9, amount);
+                ps.setDouble(10, multiplier);
+                ps.setString(11, priceText);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
     }
 }

@@ -1,32 +1,38 @@
 package cn.superiormc.ultimateshop.listeners;
 
+import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.MenuStatusManager;
+import cn.superiormc.ultimateshop.utils.CommandUtil;
+import cn.superiormc.ultimateshop.utils.PacketInventoryUtil;
 import cn.superiormc.ultimateshop.utils.SchedulerUtil;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerLoginEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 public class CacheListener implements Listener {
 
     @EventHandler
-    public void onLogin(PlayerLoginEvent event) {
+    public void onJoin(PlayerJoinEvent event) {
+        CacheManager.cacheManager.addObjectCache(event.getPlayer());
         SchedulerUtil.runTaskLater(() -> {
-            CacheManager.cacheManager.addObjectCache(event.getPlayer());
-            if (ConfigManager.configManager.getBoolean("database.auto-update-server-data") && CacheManager.cacheManager.serverCache != null) {
-                CacheManager.cacheManager.serverCache.initCache();
+            if (!event.getPlayer().isOnline()) {
+                return;
             }
+            CacheManager.cacheManager.loadPlayerCache(event.getPlayer());
         }, ConfigManager.configManager.getLong("cache.load-delay", 7L));
     }
 
     @EventHandler
     public void onExit(PlayerQuitEvent event) {
-        CacheManager.cacheManager.saveObjectCache(event.getPlayer());
-        if (ConfigManager.configManager.getBoolean("database.auto-update-server-data") && CacheManager.cacheManager.serverCache != null) {
-            CacheManager.cacheManager.serverCache.shutCache(false);
+        CommandUtil.cancelGUIUpdate(event.getPlayer());
+        SellStickListener.playerList.remove(event.getPlayer());
+        if (UltimateShop.usePacketEvents && PacketInventoryUtil.packetInventoryUtil != null) {
+            PacketInventoryUtil.packetInventoryUtil.clear(event.getPlayer());
         }
-        MenuStatusManager.menuStatusManager.removeGUIStatus(event.getPlayer());
+        CacheManager.cacheManager.saveObjectCache(event.getPlayer());
+        MenuStatusManager.menuStatusManager.clear(event.getPlayer());
     }
 }

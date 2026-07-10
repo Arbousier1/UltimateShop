@@ -4,6 +4,7 @@ import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ChinaHolidayManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.objects.caches.ObjectUseTimesCache;
 import cn.superiormc.ultimateshop.objects.items.prices.PriceMode;
 import org.bukkit.Statistic;
@@ -22,22 +23,23 @@ public class AmountVariableUtil {
     }
 
     public static String replacePriceVariables(Player player, String text, ObjectItem item,
-                                               int offsetAmount, PriceMode priceMode) {
-        return replaceVariables(player, text, item, offsetAmount, priceMode == PriceMode.BUY, true);
+                                               int offsetAmount, PriceMode priceMode, ObjectCache objectCache) {
+        return replaceVariables(player, text, item, offsetAmount, priceMode == PriceMode.BUY, true, objectCache);
     }
 
     public static String replaceProductVariables(Player player, String text, ObjectItem item,
-                                                 int offsetAmount, boolean buyOrSell) {
-        return replaceVariables(player, text, item, offsetAmount, buyOrSell, true);
+                                                 int offsetAmount, boolean buyOrSell, ObjectCache objectCache) {
+        return replaceVariables(player, text, item, offsetAmount, buyOrSell, true, objectCache);
     }
 
-    public static String replaceLimitVariables(Player player, String text, ObjectItem item) {
-        return replaceVariables(player, text, item, 0, true, false);
+    public static String replaceLimitVariables(Player player, String text, ObjectItem item, ObjectCache objectCache) {
+        return replaceVariables(player, text, item, 0, true, false, objectCache);
     }
 
     private static String replaceVariables(Player player, String text, ObjectItem item,
-                                           int offsetAmount, boolean buyOrSell, boolean includeLimitVariables) {
-        ObjectUseTimesCache playerCache = CacheManager.cacheManager.getObjectCache(player).getUseTimesCache().get(item);
+                                           int offsetAmount, boolean buyOrSell, boolean includeLimitVariables,
+                                           ObjectCache objectCache) {
+        ObjectUseTimesCache playerCache = objectCache.getUseTimesCache().get(item);
         ObjectUseTimesCache serverCache = CacheManager.cacheManager.serverCache.getUseTimesCache().get(item);
         long activeTicks = getActiveTicks(player);
         int dayOfYear = CommonUtil.getNowTime().getDayOfYear();

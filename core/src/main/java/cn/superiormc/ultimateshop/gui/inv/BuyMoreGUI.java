@@ -2,6 +2,7 @@ package cn.superiormc.ultimateshop.gui.inv;
 
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.gui.InvGUI;
+import cn.superiormc.ultimateshop.gui.dialog.DialogBuyMoreGUI;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
 import cn.superiormc.ultimateshop.methods.Product.BuyProductMethod;
@@ -52,7 +53,7 @@ public class BuyMoreGUI extends InvGUI {
         menuItems = getMenuItems(player);
         title = menu.getString("title", "Buy More Menu");
         if (Objects.isNull(inv)) {
-            inv = UltimateShop.methodUtil.createNewInv(player, menu.getInt("size", 54), title);
+            inv = UltimateShop.methodUtil.createNewInv(player, menu.getInt("size", 54), title, this);
         }
         for (int slot : menuButtons.keySet()) {
             inv.setItem(slot, menuItems.get(slot));
@@ -176,12 +177,20 @@ public class BuyMoreGUI extends InvGUI {
         if (ConfigManager.configManager.getBoolean("menu.buy-more-menu.not-open-when-invalid") && item.getBuyMoreMenu().isInvalid()) {
             return;
         }
+        if (item.getBuyMoreMenu().isUseDialog()) {
+            new DialogBuyMoreGUI(player, item).openGUI(true);
+            return;
+        }
         BuyMoreGUI gui = new BuyMoreGUI(player, item);
         gui.openGUI(true);
     }
 
     public static void openGUI(Player player, ObjectItem item, ObjectMoreMenu menu) {
         if (ConfigManager.configManager.getBoolean("menu.buy-more-menu.not-open-when-invalid") && menu.isInvalid()) {
+            return;
+        }
+        if (menu.isUseDialog()) {
+            new DialogBuyMoreGUI(player, item).openGUI(true);
             return;
         }
         BuyMoreGUI gui = new BuyMoreGUI(player, item, menu);

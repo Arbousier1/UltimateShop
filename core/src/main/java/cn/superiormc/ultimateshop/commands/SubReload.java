@@ -1,8 +1,12 @@
 package cn.superiormc.ultimateshop.commands;
 
 import cn.superiormc.ultimateshop.methods.ReloadPlugin;
+import cn.superiormc.ultimateshop.managers.LanguageManager;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+
+import java.util.List;
 
 public class SubReload extends AbstractCommand {
 

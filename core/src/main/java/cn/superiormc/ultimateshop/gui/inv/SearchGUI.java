@@ -3,6 +3,7 @@ package cn.superiormc.ultimateshop.gui.inv;
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.api.ShopHelper;
 import cn.superiormc.ultimateshop.gui.InvGUI;
+import cn.superiormc.ultimateshop.gui.dialog.DialogSearchGUI;
 import cn.superiormc.ultimateshop.gui.Prompt;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.MenuStatusManager;
@@ -67,7 +68,7 @@ public class SearchGUI extends InvGUI {
 
         title = TextUtil.withPAPI(CommonUtil.parseLang(player, menu.getString("title", "Search")), player);
         if (Objects.isNull(inv)) {
-            inv = UltimateShop.methodUtil.createNewInv(player, menu.getInt("size", 54), title);
+            inv = UltimateShop.methodUtil.createNewInv(player, menu.getInt("size", 54), title, this);
         }
 
         initInputItemMap();
@@ -322,6 +323,10 @@ public class SearchGUI extends InvGUI {
     }
 
     public static void openGUI(Player player, ObjectSearchMenu menu, boolean bypass, boolean reopen) {
+        if (menu.isUseDialog()) {
+            new DialogSearchGUI(player, menu, bypass).openGUI(reopen);
+            return;
+        }
         SearchGUI gui = new SearchGUI(player, menu, bypass);
         gui.openGUI(reopen);
     }

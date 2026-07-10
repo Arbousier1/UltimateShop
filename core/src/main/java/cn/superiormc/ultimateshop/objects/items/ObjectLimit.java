@@ -1,8 +1,10 @@
 package cn.superiormc.ultimateshop.objects.items;
 
+import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.objects.ObjectThingRun;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.utils.AmountVariableUtil;
 import cn.superiormc.ultimateshop.utils.MathUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
@@ -72,7 +74,11 @@ public class ObjectLimit {
         String tempVal1 = limitSection.getString(path, "-1");
         if (!tempVal1.equals("-1")) {
             if (item != null && ConfigManager.configManager.getBoolean("placeholder.data.can-used-in-amount")) {
-                tempVal1 = AmountVariableUtil.replaceLimitVariables(player, tempVal1, item);
+                ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+                if (cache == null) {
+                    return tempVal2;
+                }
+                tempVal1 = AmountVariableUtil.replaceLimitVariables(player, tempVal1, item, cache);
             }
             tempVal2 = MathUtil.doCalculate(TextUtil.withPAPI(tempVal1, player)).intValue();
         }

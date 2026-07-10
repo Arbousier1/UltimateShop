@@ -2,10 +2,13 @@ package cn.superiormc.ultimateshop.paper;
 
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
+import cn.superiormc.ultimateshop.gui.DialogGUI;
+import cn.superiormc.ultimateshop.gui.dialog.DialogView;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
 import cn.superiormc.ultimateshop.paper.methods.BuildItemPaper;
 import cn.superiormc.ultimateshop.paper.methods.DebuildItemPaper;
+import cn.superiormc.ultimateshop.paper.dialog.PaperDialogFactory;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.SchedulerUtil;
 import cn.superiormc.ultimateshop.utils.SpecialMethodUtil;
@@ -23,13 +26,12 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public class PaperMethodUtil implements SpecialMethodUtil {
 
@@ -119,11 +121,26 @@ public class PaperMethodUtil implements SpecialMethodUtil {
         }
     }
 
+    public Map<String, PlayerProfile> playerProfiles = Collections.synchronizedMap(
+            new LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, PlayerProfile> eldest) {
+                    return size() > 256;
+                }
+            });
+
     @Override
     public SkullMeta setSkullMeta(SkullMeta meta, String skull) {
         PlayerProfile profile = Bukkit.createProfile(UUID.randomUUID(), "");
-        profile.setProperty(new ProfileProperty("textures", skull));
-        meta.setPlayerProfile(profile);
+        if (skull.length() > 16) {
+            profile.setProperty(new ProfileProperty("textures", skull));
+            meta.setPlayerProfile(profile);
+        } else {
+            if (!playerProfiles.containsKey(skull)) {
+                playerProfiles.put(skull, Bukkit.getOfflinePlayer(skull).getPlayerProfile());
+            }
+            meta.setPlayerProfile(playerProfiles.get(skull));
+        }
         return meta;
     }
 
@@ -131,15 +148,15 @@ public class PaperMethodUtil implements SpecialMethodUtil {
     public String serializeSkull(SkullMeta meta) {
         PlayerProfile profile = meta.getPlayerProfile();
         if (profile != null) {
+            String name = profile.getName();
+            if (name != null && !name.trim().isEmpty()) {
+                return name;
+            }
             for (ProfileProperty property : profile.getProperties()) {
                 if ("textures".equalsIgnoreCase(property.getName()) && property.getValue() != null && !property.getValue().isEmpty()) {
                     return property.getValue();
                 }
             }
-        }
-
-        if (meta.getOwningPlayer() != null) {
-            return meta.getOwningPlayer().getName();
         }
         return null;
     }
@@ -238,8 +255,8 @@ public class PaperMethodUtil implements SpecialMethodUtil {
     }
 
     @Override
-    public Inventory createNewInv(Player player, int size, String text) {
-        return Bukkit.createInventory(player, size, PaperTextUtil.modernParse(text, player));
+    public Inventory createNewInv(Player player, int size, String text, InventoryHolder holder) {
+        return Bukkit.createInventory(holder, size, PaperTextUtil.modernParse(text, player));
     }
 
     @Override
@@ -282,6 +299,22 @@ public class PaperMethodUtil implements SpecialMethodUtil {
             return null;
         }
         return DebuildItemPaper.serializeItemStack(item);
+    }
+
+    @Override
+    public boolean showDialog(Player player, DialogGUI gui, DialogView view) {
+        if (player == null || !CommonUtil.getMinorVersion(21, 7)) {
+            return false;
+        }
+        player.showDialog(PaperDialogFactory.create(player, gui, view));
+        return true;
+    }
+
+    @Override
+    public void closeDialog(Player player) {
+        if (player != null && CommonUtil.getMinorVersion(21, 7)) {
+            player.closeDialog();
+        }
     }
 
 }

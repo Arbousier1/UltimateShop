@@ -19,8 +19,6 @@ import org.jetbrains.annotations.NotNull;
 
 public class PlaceholderAPIExpansion extends PlaceholderExpansion {
 
-    public static PlaceholderAPIExpansion papi = null;
-
     private final UltimateShop plugin;
 
     @Override
@@ -56,6 +54,9 @@ public class PlaceholderAPIExpansion extends PlaceholderExpansion {
 
     @Override
     public String onRequest(OfflinePlayer offlinePlayer, String params) {
+        if (offlinePlayer == null) {
+            return null;
+        }
         Player player = offlinePlayer.getPlayer();
         if (player == null) {
             return null;
@@ -80,8 +81,11 @@ public class PlaceholderAPIExpansion extends PlaceholderExpansion {
             if (item == null) {
                 return LanguageManager.languageManager.getStringText(player, "placeholderapi.unknown-product");
             }
-            ObjectCache ObjectCache = CacheManager.cacheManager.getObjectCache(player);
-            ObjectUseTimesCache playerTimesCache = ObjectCache.getUseTimesCache(item);
+            ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+            if (cache == null) {
+                return "ERROR: Can not found player cache.";
+            }
+            ObjectUseTimesCache playerTimesCache = cache.getUseTimesCache(item);
             if (playerTimesCache == null) {
                 return "ERROR: Can not found player cache.";
             }
@@ -103,7 +107,7 @@ public class PlaceholderAPIExpansion extends PlaceholderExpansion {
                 case "sell-price":
                     return TextUtil.parse(ObjectPrices.getDisplayNameInLine(player,
                             1,
-                            item.getSellPrice().give(player, playerTimesCache.getBuyUseTimes(), 1).getResultMap(),
+                            item.getSellPrice().give(player, playerTimesCache.getBuyUseTimes(), 1).getResultMapForSellMultiplierDisplay(player),
                             item.getSellPrice().getMode(),
                             !ConfigManager.configManager.getBoolean("placeholder.status.can-used-everywhere")));
                 case "buy-limit-player":

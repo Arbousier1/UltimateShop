@@ -1,6 +1,5 @@
 package cn.superiormc.ultimateshop.methods.Product;
 
-import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.api.ItemFinishTransactionEvent;
 import cn.superiormc.ultimateshop.api.ItemPreTransactionEvent;
 import cn.superiormc.ultimateshop.api.ShopHelper;
@@ -21,8 +20,8 @@ import cn.superiormc.ultimateshop.objects.items.prices.ObjectPrices;
 import cn.superiormc.ultimateshop.objects.items.products.ObjectProducts;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.MathUtil;
-import cn.superiormc.ultimateshop.utils.SchedulerUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
+import cn.superiormc.ultimateshop.utils.TransactionLogger;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -37,9 +36,9 @@ public class SellProductMethod {
     public static ProductTradeStatus startSell(ObjectItem item,
                                                Player player,
                                                boolean forceDisplayMessage,
-                                               boolean test,
+                                               boolean notCost,
                                                int multi) {
-        return startSell(item, player, forceDisplayMessage, test, false, multi);
+        return startSell(item, player, forceDisplayMessage, notCost, false, multi);
     }
 
     public static ProductTradeStatus startSell(ObjectItem item,
@@ -84,11 +83,27 @@ public class SellProductMethod {
                                                boolean sellAll,
                                                int multi,
                                                double multiplier) {
+        return startSell(storage, item, player, forceDisplayMessage, notCost, ableMaxSell, sellAll, false, multi, multiplier);
+    }
+
+    public static ProductTradeStatus startSell(ItemStorage storage,
+                                               ObjectItem item,
+                                               Player player,
+                                               boolean forceDisplayMessage,
+                                               boolean notCost,
+                                               boolean ableMaxSell,
+                                               boolean sellAll,
+                                               boolean ignoreSellMultiplier,
+                                               int multi,
+                                               double multiplier) {
         if (item == null) {
             return ProductTradeStatus.ERROR;
         }
         if (item.getShopObject().getProductNotHidden(player, item) == null) {
             return ProductTradeStatus.ERROR;
+        }
+        if (multi >= 10000) {
+            multi = 9999;
         }
         if (!ConfigManager.configManager.getBoolean("force-display-fail-message")) {
             forceDisplayMessage = false;
@@ -107,12 +122,12 @@ public class SellProductMethod {
             return ProductTradeStatus.ERROR;
         }
         double finalMultiplier = multiplier;
-        if (!notCost || !ConfigManager.configManager.getBoolean("sell.multiplier.display-original-price")) {
+        if (!ignoreSellMultiplier && !notCost) {
             finalMultiplier = MathUtil.multiply(finalMultiplier, ShopHelper.getSellMultiplier(player));
         }
         ObjectCache tempVal3 = CacheManager.cacheManager.getObjectCache(player);
         ObjectCache tempVal11 = CacheManager.cacheManager.serverCache;
-        if (tempVal3 == null) {
+        if (tempVal3 == null || tempVal11 == null || tempVal3.canNotModify() || tempVal11.canNotModify()) {
             LanguageManager.languageManager.sendStringText(player,
                     "error.player-not-found",
                     "player",
@@ -312,30 +327,12 @@ public class SellProductMethod {
                     "amount",
                     String.valueOf(calculateAmount));
         }
-        if (ConfigManager.configManager.getBoolean("log-transaction.enabled") && !UltimateShop.freeVersion) {
-            String log = CommonUtil.modifyString(player, ConfigManager.configManager.getString("log-transaction.format"),
-                    "player", player.getName(),
-                    "player-uuid", player.getUniqueId().toString(),
-                    "shop", item.getShop(),
-                    "shop-name", item.getShopObject().getShopDisplayName(),
-                    "item", item.getProduct(),
-                    "item-name", TextUtil.parse(item.getDisplayName(player)),
-                    "amount", String.valueOf(calculateAmount),
-                    "multiplier", MathUtil.toDisplayString(finalMultiplier),
-                    "price", ObjectPrices.getDisplayNameInLine(player,
-                            multi,
-                            giveResult.getResultMap(),
-                            item.getSellPrice().getMode(),
-                            !ConfigManager.configManager.getBoolean("placeholder.status.can-used-everywhere")),
-                    "buy-or-sell", "SELL",
-                    "time", CommonUtil.timeToString(CommonUtil.getNowTime(), ConfigManager.configManager.getString("log-transaction.time-format")));
-            String filePath = ConfigManager.configManager.getString("log-transaction.file");
-            if (filePath.isEmpty()) {
-                TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fLog: " + log);
-            }  else {
-                SchedulerUtil.runTaskAsynchronously(() -> CommonUtil.logFile(filePath, log));
-            }
-        }
+        TransactionLogger.log(player, item, calculateAmount, MathUtil.toDisplayString(finalMultiplier), "SELL",
+                ObjectPrices.getDisplayNameInLine(player,
+                        multi,
+                        giveResult.getResultMap(),
+                        item.getSellPrice().getMode(),
+                        !ConfigManager.configManager.getBoolean("placeholder.status.can-used-everywhere")));
         ItemFinishTransactionEvent event = new ItemFinishTransactionEvent(false, player, multi, item);
         Bukkit.getServer().getPluginManager().callEvent(event);
         return new ProductTradeStatus(ProductTradeStatus.Status.DONE, takeResult, giveResult, multi);

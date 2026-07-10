@@ -3,6 +3,7 @@ package cn.superiormc.ultimateshop.api;
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
+import cn.superiormc.ultimateshop.managers.LanguageManager;
 import cn.superiormc.ultimateshop.managers.MenuStatusManager;
 import cn.superiormc.ultimateshop.methods.Product.SellProductMethod;
 import cn.superiormc.ultimateshop.methods.ProductTradeStatus;
@@ -10,20 +11,22 @@ import cn.superiormc.ultimateshop.objects.ObjectShop;
 import cn.superiormc.ultimateshop.objects.SearchResult;
 import cn.superiormc.ultimateshop.objects.ObjectThingRun;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.objects.caches.ObjectUseTimesCache;
 import cn.superiormc.ultimateshop.objects.items.*;
 import cn.superiormc.ultimateshop.objects.items.ObjectCondition;
 import cn.superiormc.ultimateshop.objects.items.prices.ObjectPrices;
 import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
 import cn.superiormc.ultimateshop.utils.MathUtil;
+import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -44,7 +47,11 @@ public class ShopHelper {
     }
 
     public static ObjectUseTimesCache getPlayerUseTimesCache(ObjectItem item, Player player) {
-        return CacheManager.cacheManager.getObjectCache(player).getUseTimesCache(item);
+        ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+        if (cache == null) {
+            return null;
+        }
+        return cache.getUseTimesCache(item);
     }
 
     public static ObjectUseTimesCache getServerUseTimesCache(ObjectItem item) {
@@ -52,11 +59,19 @@ public class ShopHelper {
     }
 
     public static int getBuyUseTimes(ObjectItem item, Player player) {
-        return getPlayerUseTimesCache(item, player).getBuyUseTimes();
+        ObjectUseTimesCache useTimesCache = getPlayerUseTimesCache(item, player);
+        if (useTimesCache == null) {
+            return 0;
+        }
+        return useTimesCache.getBuyUseTimes();
     }
 
     public static int getSellUseTimes(ObjectItem item, Player player) {
-        return getPlayerUseTimesCache(item, player).getSellUseTimes();
+        ObjectUseTimesCache useTimesCache = getPlayerUseTimesCache(item, player);
+        if (useTimesCache == null) {
+            return 0;
+        }
+        return useTimesCache.getSellUseTimes();
     }
 
     @Nullable
@@ -166,7 +181,7 @@ public class ShopHelper {
                 TakeResult takeResult = item.getReward().take(storage, player, 1, 1, false);
                 if (takeResult != null && !takeResult.empty && takeResult.getResultBoolean()) {
                     GiveResult anotherGiveResult = item.getSellPrice().give(player, getBuyUseTimes(item, player), amount);
-                    return ObjectPrices.getDisplayNameInLine(player, amount, anotherGiveResult.getResultMap(), item.getReward().getMode(), true);
+                    return ObjectPrices.getDisplayNameInLine(player, amount, anotherGiveResult.getResultMapForSellMultiplierDisplay(player), item.getReward().getMode(), true);
                 }
             }
         }
@@ -273,7 +288,7 @@ public class ShopHelper {
             return new HashMap<>();
         }
         Map<AbstractSingleThing, BigDecimal> result = new HashMap<>();
-        boolean firstSell = false;
+        boolean hasActionExecuted = false;
 
         for (String shop : ConfigManager.configManager.shopConfigs.keySet()) {
             for (ObjectItem products :
@@ -289,7 +304,8 @@ public class ShopHelper {
                                 false,
                                 false,
                                 true,
-                                firstSell,
+                                hasActionExecuted,
+                                false,
                                 1,
                                 multiplier
                         );
@@ -300,11 +316,49 @@ public class ShopHelper {
                 }
 
                 if (!products.getSellAction().isEmpty()) {
-                    firstSell = true;
+                    hasActionExecuted = true;
                 }
             }
         }
         return result;
+    }
+
+    public static void sellMainHandStack(Player player) {
+        ItemStorage handStorage = createMainHandStorage(player);
+        ObjectItem item = ShopHelper.getTargetItem(handStorage, player);
+        if (item == null || item.getSellPrice().empty) {
+            LanguageManager.languageManager.sendStringText(player, "error.result-empty");
+            return;
+        }
+        SellProductMethod.startSell(handStorage, item, player, false, false, true, false, 1, 1);
+    }
+
+    public static ItemStorage createMainHandStorage(Player player) {
+        return new ItemStorage() {
+            @Override
+            public ItemStack[] getStorageContents() {
+                ItemStack handItem = player.getInventory().getItemInMainHand();
+                if (handItem == null || handItem.getType().isAir()) {
+                    return new ItemStack[1];
+                }
+                return new ItemStack[]{handItem.clone()};
+            }
+
+            @Override
+            public void setStorageContents(ItemStack[] contents) {
+                PlayerInventory inventory = player.getInventory();
+                if (contents == null || contents.length == 0 || contents[0] == null || contents[0].getType().isAir()) {
+                    inventory.setItemInMainHand(new ItemStack(Material.AIR));
+                    return;
+                }
+                inventory.setItemInMainHand(contents[0].clone());
+            }
+
+            @Override
+            public boolean isPlayerInventory() {
+                return true;
+            }
+        };
     }
 
     @Nullable

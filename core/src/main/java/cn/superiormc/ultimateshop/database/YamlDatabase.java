@@ -28,7 +28,7 @@ public class YamlDatabase extends AbstractDatabase {
 
     @Override
     public void checkData(ObjectCache cache) {
-        CompletableFuture.runAsync(() -> loadData(cache), DatabaseExecutor.EXECUTOR);
+        CompletableFuture.runAsync(() -> loadData(cache), DatabaseExecutor.getExecutor());
     }
 
     private void loadData(ObjectCache cache) {
@@ -146,6 +146,7 @@ public class YamlDatabase extends AbstractDatabase {
                 });
             }
         }
+        cache.ready();
     }
 
     @Override
@@ -153,9 +154,9 @@ public class YamlDatabase extends AbstractDatabase {
         CompletableFuture.runAsync(() -> {
             saveData(cache);
             if (quitServer) {
-                CacheManager.cacheManager.removeObjectCache(cache.getPlayer());
+                CacheManager.cacheManager.removeObjectCache(cache);
             }
-        }, DatabaseExecutor.EXECUTOR);
+        }, DatabaseExecutor.getExecutor());
     }
 
     private void saveData(ObjectCache cache) {
@@ -287,6 +288,6 @@ public class YamlDatabase extends AbstractDatabase {
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
         saveData(cache);
-        CacheManager.cacheManager.removeObjectCache(cache.getPlayer());
+        CacheManager.cacheManager.removeObjectCache(cache);
     }
 }

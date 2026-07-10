@@ -1,32 +1,29 @@
 package cn.superiormc.ultimateshop.gui;
 
 import cn.superiormc.ultimateshop.UltimateShop;
-import cn.superiormc.ultimateshop.listeners.GUIListener;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.MenuStatusManager;
 import cn.superiormc.ultimateshop.objects.buttons.AbstractButton;
 import cn.superiormc.ultimateshop.utils.PacketInventoryUtil;
 import cn.superiormc.ultimateshop.utils.SchedulerUtil;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.NonNull;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class InvGUI extends AbstractGUI {
+public abstract class InvGUI extends AbstractGUI implements InventoryHolder {
 
     protected Inventory inv;
 
     public Map<Integer, AbstractButton> menuButtons = new HashMap<>();
 
     public Map<Integer, ItemStack> menuItems = new HashMap<>();
-
-    public Listener guiListener;
 
     protected SchedulerUtil runTask = null;
 
@@ -57,6 +54,7 @@ public abstract class InvGUI extends AbstractGUI {
         return;
     }
 
+    @Override
     public void openGUI(boolean reopen) {
         GUIStatus previousStatus = MenuStatusManager.menuStatusManager.getGUIStatus(player);
         if (!MenuStatusManager.menuStatusManager.canOpenGUI(player, this, reopen)) {
@@ -64,11 +62,7 @@ public abstract class InvGUI extends AbstractGUI {
         }
         constructGUI();
         if (inv != null) {
-            SchedulerUtil.runSync(player, () -> {
-                this.guiListener = new GUIListener(this);
-                Bukkit.getPluginManager().registerEvents(guiListener, UltimateShop.instance);
-                player.openInventory(inv);
-            });
+            SchedulerUtil.runSync(player, () -> player.openInventory(inv));
             if (getMenu() != null) {
                 getMenu().doOpenAction(player, reopen);
             }
@@ -90,8 +84,9 @@ public abstract class InvGUI extends AbstractGUI {
         }
     }
 
-    public Inventory getInv() {
-        return inv;
+    @Override
+    public void closeGUI() {
+        player.closeInventory();
     }
 
     public Map<Integer, ItemStack> getMenuItems(Player player) {
@@ -109,5 +104,10 @@ public abstract class InvGUI extends AbstractGUI {
             return new ItemStack(Material.AIR);
         }
         return button.getDisplayItem(player, 1).getItemStack();
+    }
+
+    @Override
+    public @NonNull Inventory getInventory() {
+        return inv;
     }
 }

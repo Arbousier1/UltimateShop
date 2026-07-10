@@ -1,10 +1,14 @@
 package cn.superiormc.ultimateshop.utils;
 
+import cn.superiormc.ultimateshop.gui.DialogGUI;
+import cn.superiormc.ultimateshop.gui.dialog.DialogView;
+
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -51,7 +55,7 @@ public interface SpecialMethodUtil {
                      String color,
                      String style);
 
-    Inventory createNewInv(Player player, int size, String text);
+    Inventory createNewInv(Player player, int size, String text, InventoryHolder holder);
 
     String legacyParse(String text);
 
@@ -68,4 +72,11 @@ public interface SpecialMethodUtil {
                             String... args);
 
     ConfigurationSection serializeItemStack(ItemStack item);
+
+    default boolean showDialog(Player player, DialogGUI gui, DialogView view) {
+        return false;
+    }
+
+    default void closeDialog(Player player) {
+    }
 }

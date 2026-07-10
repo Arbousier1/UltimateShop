@@ -2,9 +2,10 @@ package cn.superiormc.ultimateshop.gui.inv;
 
 import cn.superiormc.ultimateshop.UltimateShop;
 
+import cn.superiormc.ultimateshop.gui.form.FormShopGUI;
 import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.gui.InvGUI;
-import cn.superiormc.ultimateshop.gui.form.FormShopGUI;
+import cn.superiormc.ultimateshop.gui.dialog.DialogShopGUI;
 import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.LanguageManager;
@@ -73,7 +74,7 @@ public class ShopGUI extends InvGUI {
         if (menu != null) {
             title = shop.getShopMenuObject().getString("title", shop.getShopDisplayName()).replace("{shop-name}", shop.getShopDisplayName()).replace("{shop-id}", shop.getShopName().replace("_","-"));
             if (Objects.isNull(inv)) {
-                inv = UltimateShop.methodUtil.createNewInv(player, shop.getShopMenuObject().getInt("size", 54), title);
+                inv = UltimateShop.methodUtil.createNewInv(player, shop.getShopMenuObject().getInt("size", 54), title, this);
             }
         }
         for (int slot : menuButtons.keySet()) {
@@ -156,7 +157,6 @@ public class ShopGUI extends InvGUI {
                     shop.getShopMenu());
             return;
         }
-
         if (UltimateShop.useGeyser &&
                 shopMenu.isUseGeyser() &&
                 CommonUtil.isBedrockPlayer(player)) {
@@ -164,6 +164,11 @@ public class ShopGUI extends InvGUI {
             formShopGUI.openGUI(reopen);
             return;
         }
+        if (shopMenu.isUseDialog()) {
+            new DialogShopGUI(player, shop, shopMenu, bypass).openGUI(reopen);
+            return;
+        }
+
         ShopGUI gui = new ShopGUI(player, shop, shopMenu, bypass);
         gui.openGUI(reopen);
     }

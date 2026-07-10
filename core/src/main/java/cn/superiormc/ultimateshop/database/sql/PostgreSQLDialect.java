@@ -41,8 +41,8 @@ public class PostgreSQLDialect extends DatabaseDialect {
                 cooldownSellTime TIMESTAMP,
                 sellHistory TEXT,
                 buyHistory TEXT,
-                totalSellRevenue DOUBLE DEFAULT 0,
-                totalBuyCost DOUBLE DEFAULT 0,
+                totalSellRevenue DOUBLE PRECISION DEFAULT 0,
+                totalBuyCost DOUBLE PRECISION DEFAULT 0,
                 PRIMARY KEY (playerUUID, shop, product)
             )
         """;
@@ -160,6 +160,36 @@ public class PostgreSQLDialect extends DatabaseDialect {
                 playerUUID, menuName, sortOrder, shop, product
             )
             VALUES (?, ?, ?, ?, ?)
+        """;
+    }
+
+    @Override
+    public String createTransactionLogTable() {
+        return """
+            CREATE TABLE IF NOT EXISTS ultimateshop_transactions (
+                id BIGSERIAL PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL,
+                player_uuid VARCHAR(36) NOT NULL,
+                player_name VARCHAR(32) NOT NULL,
+                shop_id VARCHAR(48) NOT NULL,
+                shop_name VARCHAR(128) NOT NULL,
+                item_id VARCHAR(48) NOT NULL,
+                item_name VARCHAR(256) NOT NULL,
+                action VARCHAR(4) NOT NULL,
+                amount INT NOT NULL,
+                multiplier DOUBLE PRECISION NOT NULL,
+                price_text TEXT
+            )
+        """;
+    }
+
+    @Override
+    public String insertTransactionLog() {
+        return """
+            INSERT INTO ultimateshop_transactions
+            (created_at, player_uuid, player_name, shop_id, shop_name, item_id, item_name,
+             action, amount, multiplier, price_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     }
 

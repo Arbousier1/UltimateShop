@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "cn.superiormc.ultimateshop"
-version = "4.5.26"
+version = "4.7.1"
 
 subprojects {
     apply(plugin = "java")

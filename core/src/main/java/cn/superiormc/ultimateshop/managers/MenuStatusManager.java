@@ -2,7 +2,12 @@ package cn.superiormc.ultimateshop.managers;
 
 import cn.superiormc.ultimateshop.editor.*;
 import cn.superiormc.ultimateshop.gui.AbstractGUI;
+import cn.superiormc.ultimateshop.gui.DialogGUI;
+import cn.superiormc.ultimateshop.gui.FormGUI;
 import cn.superiormc.ultimateshop.gui.GUIStatus;
+import cn.superiormc.ultimateshop.gui.InvGUI;
+import cn.superiormc.ultimateshop.gui.inv.CommonGUI;
+import cn.superiormc.ultimateshop.gui.inv.ShopGUI;
 import cn.superiormc.ultimateshop.gui.inv.editor.EditorFileListGUI;
 import cn.superiormc.ultimateshop.gui.inv.editor.EditorPresetGUI;
 import cn.superiormc.ultimateshop.editor.EditorContext;
@@ -13,6 +18,7 @@ import cn.superiormc.ultimateshop.gui.inv.editor.EditorSectionGUI;
 import cn.superiormc.ultimateshop.methods.Items.DebuildItem;
 import cn.superiormc.ultimateshop.methods.ReloadPlugin;
 import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
+import cn.superiormc.ultimateshop.objects.ObjectShop;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.SchedulerUtil;
 import org.bukkit.configuration.ConfigurationSection;
@@ -20,10 +26,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -33,11 +36,17 @@ public class MenuStatusManager {
 
     private static final Object SECTION_SENTINEL = new Object();
 
+    private static final int MAX_GUI_HISTORY_SIZE = 32;
+
     private final Map<UUID, EditorContext> contexts = new ConcurrentHashMap<>();
 
     private final Map<UUID, Prompt> prompts = new ConcurrentHashMap<>();
 
     private final Map<UUID, GUIStatus> openGuis = new ConcurrentHashMap<>();
+
+    private final Map<UUID, GUIHistory> guiHistories = new ConcurrentHashMap<>();
+
+    private final Set<UUID> returningBack = ConcurrentHashMap.newKeySet();
 
     public MenuStatusManager() {
         menuStatusManager = this;
@@ -96,7 +105,72 @@ public class MenuStatusManager {
         if (!reopen && guiStatus != null && ConfigManager.configManager.getLong("menu.cooldown.reopen", -1L) > 0L) {
             return false;
         }
+        UUID uuid = player.getUniqueId();
+        if (returningBack.remove(uuid)) {
+            setGUIStatus(player, GUIStatus.of(gui,
+                    reopen ? GUIStatus.Status.ACTION_OPEN_MENU : GUIStatus.Status.CAN_REOPEN));
+            return true;
+        }
+        if (guiStatus != null) {
+            guiHistories.computeIfAbsent(uuid, ignored -> new GUIHistory())
+                    .record(guiStatus.getGUI(), gui);
+        }
         setGUIStatus(player, GUIStatus.of(gui, reopen ? GUIStatus.Status.ACTION_OPEN_MENU : GUIStatus.Status.CAN_REOPEN));
+        return true;
+    }
+
+    public boolean openPreviousGUI(Player player) {
+        return openPreviousGUI(player, null);
+    }
+
+    public boolean openPreviousGUI(Player player, String fallbackMenu) {
+        return openPreviousGUI(player, fallbackMenu, null);
+    }
+
+    public boolean openPreviousGUI(Player player, String fallbackMenu, String fallbackShop) {
+        if (player == null) {
+            return false;
+        }
+        UUID uuid = player.getUniqueId();
+        GUIHistory history = guiHistories.get(uuid);
+        AbstractGUI current = getOpeningGUI(player);
+        AbstractGUI previous = history == null ? null : history.pollPrevious(current);
+        if (history != null && history.isEmpty()) {
+            guiHistories.remove(uuid, history);
+        }
+        if (previous == null) {
+            if (fallbackShop != null && !fallbackShop.trim().isEmpty()) {
+                ObjectShop shop = ConfigManager.configManager.getShop(fallbackShop);
+                if (shop == null || shop.getShopMenuObject() == null
+                        || shop.getShopMenuObject().menuConfigs == null) {
+                    return false;
+                }
+                returningBack.add(uuid);
+                ShopGUI.openGUI(player, shop, false, true);
+                return true;
+            }
+            if (fallbackMenu == null || fallbackMenu.trim().isEmpty()) {
+                return false;
+            }
+            ObjectMenu menu = ObjectMenu.commonMenus.get(fallbackMenu);
+            if (menu == null || menu.menuConfigs == null) {
+                return false;
+            }
+            returningBack.add(uuid);
+            CommonGUI.openGUI(player, fallbackMenu, false, true);
+            return true;
+        }
+        returningBack.add(uuid);
+        if (previous instanceof InvGUI invGUI) {
+            invGUI.openGUI(true);
+        } else if (previous instanceof FormGUI formGUI) {
+            formGUI.openGUI(true);
+        } else if (previous instanceof DialogGUI dialogGUI) {
+            dialogGUI.openGUI(true);
+        } else {
+            returningBack.remove(uuid);
+            return false;
+        }
         return true;
     }
 
@@ -123,6 +197,8 @@ public class MenuStatusManager {
         contexts.remove(player.getUniqueId());
         prompts.remove(player.getUniqueId());
         openGuis.remove(player.getUniqueId());
+        guiHistories.remove(player.getUniqueId());
+        returningBack.remove(player.getUniqueId());
     }
 
     public boolean hasPrompt(Player player) {
@@ -743,5 +819,49 @@ public class MenuStatusManager {
             return conditionsRootPath.substring(0, conditionsRootPath.length() - "limits-conditions".length()) + "limits";
         }
         return null;
+    }
+
+    private static final class GUIHistory {
+
+        private final Deque<AbstractGUI> entries = new ArrayDeque<>();
+
+        private synchronized void record(AbstractGUI current, AbstractGUI next) {
+            if (current == null || isSamePage(current, next)) {
+                return;
+            }
+            if (!isSamePage(entries.peekLast(), current)) {
+                entries.addLast(current);
+            }
+            while (entries.size() > MAX_GUI_HISTORY_SIZE) {
+                entries.pollFirst();
+            }
+        }
+
+        private synchronized AbstractGUI pollPrevious(AbstractGUI current) {
+            AbstractGUI previous;
+            do {
+                previous = entries.pollLast();
+            } while (previous != null && isSamePage(previous, current));
+            return previous;
+        }
+
+        private synchronized boolean isEmpty() {
+            return entries.isEmpty();
+        }
+
+        private static boolean isSamePage(AbstractGUI first, AbstractGUI second) {
+            if (first == second) {
+                return first != null;
+            }
+            if (first == null || second == null || first.getClass() != second.getClass()) {
+                return false;
+            }
+            ObjectMenu firstMenu = first.getMenu();
+            ObjectMenu secondMenu = second.getMenu();
+            if (firstMenu == null || secondMenu == null) {
+                return false;
+            }
+            return firstMenu == secondMenu || Objects.equals(firstMenu.getName(), secondMenu.getName());
+        }
     }
 }

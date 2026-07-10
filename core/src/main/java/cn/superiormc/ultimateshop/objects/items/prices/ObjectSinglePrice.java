@@ -1,16 +1,22 @@
 package cn.superiormc.ultimateshop.objects.items.prices;
 
 import cn.superiormc.ultimateshop.UltimateShop;
+import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.methods.StaticPlaceholder;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.objects.items.AbstractSingleThing;
+import cn.superiormc.ultimateshop.objects.items.GiveItemStack;
 import cn.superiormc.ultimateshop.objects.items.ItemStorage;
 import cn.superiormc.ultimateshop.utils.AmountVariableUtil;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
+import cn.superiormc.ultimateshop.utils.ItemUtil;
 import cn.superiormc.ultimateshop.utils.MathUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -146,7 +152,11 @@ public class ObjectSinglePrice extends AbstractSingleThing {
         } else {
             String tempVal1 = amountOption;
             if (item != null && ConfigManager.configManager.getBoolean("placeholder.data.can-used-in-amount")) {
-                tempVal1 = AmountVariableUtil.replacePriceVariables(player, tempVal1, item, offsetAmount, priceMode);
+                ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+                if (cache == null) {
+                    return new BigDecimal(-1);
+                }
+                tempVal1 = AmountVariableUtil.replacePriceVariables(player, tempVal1, item, offsetAmount, priceMode, cache);
             }
             cost = MathUtil.doCalculate(TextUtil.withPAPI(tempVal1, player));
         }
@@ -197,11 +207,43 @@ public class ObjectSinglePrice extends AbstractSingleThing {
         if (tempVal2.contains("{amount}") && ConfigManager.configManager.getBoolean("placeholder.auto-settings.change-amount-in-all-price-placeholder.enabled")) {
             tempVal2 = tempVal2.replace("{amount}", ConfigManager.configManager.getStringWithLang(player, "placeholder.auto-settings.change-amount-in-all-price-placeholder.replace-value", "{amount}"));
         }
+        String itemName = "";
+        if (tempVal2.contains("{display}")) {
+            itemName = resolveDisplayPlaceholder(player);
+        }
         return CommonUtil.modifyString(player, tempVal2,
                         "amount",
                         MathUtil.toDisplayString(amount),
+                        "display",
+                        itemName,
                         "status",
                         alwaysStatic || baseAmount == null ? "" : StaticPlaceholder.getCompareValue(player, baseAmount.multiply(new BigDecimal(multi)), amount));
+    }
+
+    private String resolveDisplayPlaceholder(Player player) {
+        ConfigurationSection section = singleSection;
+        if (customPrice) {
+            ConfigurationSection customSection = ConfigManager.configManager.config.getConfigurationSection("prices." +
+                    singleSection.getString("custom-type"));
+            if (customSection != null) {
+                section = customSection;
+            }
+        }
+        switch (type) {
+            case VANILLA_ITEM, HOOK_ITEM:
+                GiveItemStack itemThing = getItemThing(section, player, 1, true);
+                ItemStack displayItem = itemThing.getDisplayItem();
+                if (displayItem == null) {
+                    displayItem = itemThing.getTargetItem();
+                }
+                return ItemUtil.getItemName(displayItem);
+            case VANILLA_ECONOMY:
+                return section.getString("economy-type");
+            case HOOK_ECONOMY:
+                return section.getString("economy-plugin");
+            default:
+                return "";
+        }
     }
 
     public int getStartApply() {

@@ -1,8 +1,10 @@
 package cn.superiormc.ultimateshop.objects.items.products;
 
+import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.methods.StaticPlaceholder;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
+import cn.superiormc.ultimateshop.objects.caches.ObjectCache;
 import cn.superiormc.ultimateshop.objects.items.AbstractSingleThing;
 import cn.superiormc.ultimateshop.utils.AmountVariableUtil;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
@@ -69,7 +71,11 @@ public class ObjectSingleProduct extends AbstractSingleThing {
             cost = baseAmount;
         } else {
             if (item != null && ConfigManager.configManager.getBoolean("placeholder.data.can-used-in-amount")) {
-                tempVal1 = AmountVariableUtil.replaceProductVariables(player, tempVal1, item, offsetAmount, buyOrSell);
+                ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
+                if (cache == null) {
+                    return new BigDecimal(-1);
+                }
+                tempVal1 = AmountVariableUtil.replaceProductVariables(player, tempVal1, item, offsetAmount, buyOrSell, cache);
             }
             cost = MathUtil.doCalculate(TextUtil.withPAPI(tempVal1, player));
         }

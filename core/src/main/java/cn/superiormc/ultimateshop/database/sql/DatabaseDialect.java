@@ -14,8 +14,14 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class DatabaseDialect {
+
+    private final List<Driver> registeredDrivers = new ArrayList<>();
+
+    private final List<URLClassLoader> driverClassLoaders = new ArrayList<>();
 
     public abstract boolean matches(String jdbcUrl);
 
@@ -43,6 +49,17 @@ public abstract class DatabaseDialect {
 
     public abstract String insertFavourite();
 
+    public abstract String createTransactionLogTable();
+
+    public abstract String insertTransactionLog();
+
+    public String[] createTransactionLogIndexes() {
+        return new String[] {
+                "CREATE INDEX IF NOT EXISTS idx_us_transactions_created_at ON ultimateshop_transactions (created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_us_transactions_player_uuid ON ultimateshop_transactions (player_uuid)"
+        };
+    }
+
     /** 是否支持批量写入 */
     public boolean supportBatch() {
         return true;
@@ -57,7 +74,7 @@ public abstract class DatabaseDialect {
 
     public void loadDriver(String driverName, String mavenUrl, String driverClassName) {
         try {
-            Path libPath = Paths.get("plugins/UltimateShop/libs/");
+            Path libPath = Paths.get(UltimateShop.instance.getDataFolder().getPath(), "libs");
             if (!Files.exists(libPath)) Files.createDirectories(libPath);
 
             String jarName = driverName + ".jar";
@@ -79,7 +96,10 @@ public abstract class DatabaseDialect {
             // 注册 Driver
             Class<?> driverClass = Class.forName(driverClassName, true, loader);
             Driver driverInstance = (Driver) driverClass.getDeclaredConstructor().newInstance();
-            DriverManager.registerDriver(new DriverShim(driverInstance));
+            Driver registeredDriver = new DriverShim(driverInstance);
+            DriverManager.registerDriver(registeredDriver);
+            registeredDrivers.add(registeredDriver);
+            driverClassLoaders.add(loader);
 
             TextUtil.sendMessage(
                     null,
@@ -90,5 +110,22 @@ public abstract class DatabaseDialect {
                     TextUtil.pluginPrefix() + " §fFailed to load " + driverName + "!");
             e.printStackTrace();
         }
+    }
+
+    public void closeDrivers() {
+        for (Driver driver : registeredDrivers) {
+            try {
+                DriverManager.deregisterDriver(driver);
+            } catch (Throwable ignored) {
+            }
+        }
+        registeredDrivers.clear();
+        for (URLClassLoader loader : driverClassLoaders) {
+            try {
+                loader.close();
+            } catch (Throwable ignored) {
+            }
+        }
+        driverClassLoaders.clear();
     }
 }
