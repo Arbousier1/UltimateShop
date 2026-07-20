@@ -5,7 +5,18 @@ dependencies {
     implementation("org.bstats:bstats-bukkit:3.1.0")
     compileOnly("org.geysermc.floodgate:api:2.2.2-SNAPSHOT")
     implementation("com.cronutils:cron-utils:9.2.0")
-    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.14")
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.14") {
+        isTransitive = false
+    }
+    compileOnly("com.sk89q.worldguard:worldguard-core:7.0.14") {
+        isTransitive = false
+    }
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.9") {
+        isTransitive = false
+    }
+    compileOnly("com.sk89q.worldedit:worldedit-core:7.3.9") {
+        isTransitive = false
+    }
     compileOnly(files("lib/MythicLib-dist-1.7.1-20251205.145545-63.jar"))
     compileOnly("net.Indyuce:MMOItems-API:6.10.1-SNAPSHOT")
     compileOnly("com.github.LoneDev6:api-itemsadder:2.3.8")
