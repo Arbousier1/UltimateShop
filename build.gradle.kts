@@ -1,15 +1,25 @@
+import org.gradle.api.attributes.java.TargetJvmVersion
+
 plugins {
     id("com.gradleup.shadow") version "9.4.1" apply false
 }
 
 group = "cn.superiormc.ultimateshop"
-version = "4.7.2"
+version = "4.7.5"
 
 subprojects {
     apply(plugin = "java")
 
     group = rootProject.group
     version = rootProject.version
+
+    configurations.configureEach {
+        if (isCanBeResolved) {
+            // Upstream Paper 26.2 publishes Java 25 metadata. Resolve against JDK 25
+            // while JavaCompile below still emits Java 21-compatible bytecode.
+            attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
 
     repositories {
         mavenCentral()
