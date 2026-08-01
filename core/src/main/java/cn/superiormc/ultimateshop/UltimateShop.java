@@ -114,7 +114,8 @@ public final class UltimateShop extends JavaPlugin {
         }
         ListenerManager.listenerManager.unregisterAllListener();
         TaskManager.taskManager.cancelTask();
-        TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fWaiting for all pending database task finished, this may freeze your server if your database is lost connection.");
+        DatabaseExecutor.stopAcceptingTasks();
+        TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fWaiting up to 30 seconds for pending database tasks to finish...");
         DatabaseExecutor.await();
         if (CacheManager.cacheManager.serverCache != null) {
             CacheManager.cacheManager.serverCache.shutCacheOnDisable(true);

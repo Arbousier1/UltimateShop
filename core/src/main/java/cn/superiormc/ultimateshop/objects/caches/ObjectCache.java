@@ -1,6 +1,7 @@
 package cn.superiormc.ultimateshop.objects.caches;
 
 import cn.superiormc.ultimateshop.UltimateShop;
+import cn.superiormc.ultimateshop.database.DatabaseExecutor;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.DatabaseManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
@@ -18,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class ObjectCache {
@@ -48,6 +51,8 @@ public class ObjectCache {
 
     private final AtomicLong savedVersion = new AtomicLong();
 
+    private final AtomicBoolean autoSaveInProgress = new AtomicBoolean();
+
     // 同一个缓存可能同时遇到自动保存和玩家退出保存，串行化落盘可避免旧任务覆盖新数据。
     private final Object saveLock = new Object();
 
@@ -73,10 +78,29 @@ public class ObjectCache {
         if (canNotModify()) {
             return;
         }
-        if (!quitServer && !isDirty()) {
+        boolean autoSave = !quitServer;
+        if (autoSave && (!isDirty() || !autoSaveInProgress.compareAndSet(false, true))) {
             return;
         }
-        DatabaseManager.databaseManager.database.updateData(this, quitServer);
+        try {
+            DatabaseManager.databaseManager.database.updateData(this, quitServer);
+        } catch (RejectedExecutionException exception) {
+            if (autoSave) {
+                finishAutoSave();
+            }
+            if (DatabaseExecutor.isAcceptingTasks()) {
+                throw exception;
+            }
+            if (quitServer) {
+                cancelResetTasks();
+            }
+            return;
+        } catch (RuntimeException | Error exception) {
+            if (autoSave) {
+                finishAutoSave();
+            }
+            throw exception;
+        }
         if (quitServer) {
             cancelResetTasks();
         }
@@ -488,6 +512,10 @@ public class ObjectCache {
 
     public void markSaved(long version) {
         savedVersion.accumulateAndGet(version, Math::max);
+    }
+
+    public void finishAutoSave() {
+        autoSaveInProgress.set(false);
     }
 
     public Object getSaveLock() {

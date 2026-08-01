@@ -164,6 +164,8 @@ public class YamlDatabase extends AbstractDatabase {
             } finally {
                 if (quitServer) {
                     CacheManager.cacheManager.removeObjectCache(cache);
+                } else {
+                    cache.finishAutoSave();
                 }
             }
         }, DatabaseExecutor.getExecutor());

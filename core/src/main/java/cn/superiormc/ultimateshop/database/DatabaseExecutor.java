@@ -35,16 +35,36 @@ public class DatabaseExecutor {
     }
 
     public static synchronized void start() {
-        if (executor == null || executor.isShutdown()) {
+        if (executor == null || executor.isShutdown() || !executor.isAcceptingTasks()) {
             executor = createExecutor();
         }
     }
 
     public static synchronized ExecutorService getExecutor() {
-        if (executor == null || executor.isShutdown()) {
+        if (executor == null || executor.isShutdown() || !executor.isAcceptingTasks()) {
             throw new RejectedExecutionException("UltimateShop database executor is not running");
         }
         return executor;
+    }
+
+    public static void stopAcceptingTasks() {
+        TrackingExecutor currentExecutor;
+        synchronized (DatabaseExecutor.class) {
+            currentExecutor = executor;
+        }
+        if (currentExecutor != null) {
+            currentExecutor.stopAcceptingTasks();
+        }
+    }
+
+    public static boolean isAcceptingTasks() {
+        TrackingExecutor currentExecutor;
+        synchronized (DatabaseExecutor.class) {
+            currentExecutor = executor;
+        }
+        return currentExecutor != null
+                && !currentExecutor.isShutdown()
+                && currentExecutor.isAcceptingTasks();
     }
 
     public static void await() {
@@ -74,6 +94,7 @@ public class DatabaseExecutor {
 
     public static synchronized void shutdown() {
         if (executor != null) {
+            executor.stopAcceptingTasks();
             executor.shutdownNow();
             executor = null;
         }
@@ -82,6 +103,8 @@ public class DatabaseExecutor {
     private static class TrackingExecutor extends ThreadPoolExecutor {
 
         private final Object taskLock = new Object();
+
+        private boolean acceptingTasks = true;
 
         private int pendingTasks;
 
@@ -97,6 +120,9 @@ public class DatabaseExecutor {
         @Override
         public void execute(Runnable command) {
             synchronized (taskLock) {
+                if (!acceptingTasks) {
+                    throw new RejectedExecutionException("UltimateShop database executor is shutting down");
+                }
                 pendingTasks++;
             }
             try {
@@ -120,6 +146,18 @@ public class DatabaseExecutor {
                     }
                 }
                 throw exception;
+            }
+        }
+
+        private void stopAcceptingTasks() {
+            synchronized (taskLock) {
+                acceptingTasks = false;
+            }
+        }
+
+        private boolean isAcceptingTasks() {
+            synchronized (taskLock) {
+                return acceptingTasks;
             }
         }
 
