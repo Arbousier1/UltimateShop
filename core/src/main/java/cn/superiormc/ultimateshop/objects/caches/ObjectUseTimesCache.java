@@ -656,7 +656,7 @@ public class ObjectUseTimesCache {
     }
 
     private void touch() {
-        cache.markDirty();
+        cache.markDirty(ObjectCache.DirtySection.USE_TIMES);
     }
 
     public synchronized List<PeriodRecord> getSellHistory() {

@@ -22,8 +22,48 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 public class ObjectCache {
+
+    public enum DirtySection {
+        USE_TIMES,
+        FAVOURITES,
+        RANDOM_PLACEHOLDERS,
+        CUSTOM_PLACEHOLDERS
+    }
+
+    public static final class SaveRevision {
+
+        private final long cacheVersion;
+
+        private final long[] sectionVersions;
+
+        private final boolean[] includedSections;
+
+        private SaveRevision(long cacheVersion,
+                             long[] sectionVersions,
+                             boolean[] includedSections) {
+            this.cacheVersion = cacheVersion;
+            this.sectionVersions = sectionVersions;
+            this.includedSections = includedSections;
+        }
+
+        public boolean includes(DirtySection section) {
+            return includedSections[section.ordinal()];
+        }
+
+        public boolean hasSections() {
+            for (boolean included : includedSections) {
+                if (included) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private static final DirtySection[] DIRTY_SECTIONS = DirtySection.values();
 
     private final Map<UseTimesStorageKey, ObjectUseTimesCache> sharedUseTimesCache = new ConcurrentHashMap<>();
 
@@ -50,6 +90,12 @@ public class ObjectCache {
     private final AtomicLong modificationVersion = new AtomicLong();
 
     private final AtomicLong savedVersion = new AtomicLong();
+
+    private final AtomicLongArray sectionModificationVersions =
+            new AtomicLongArray(DIRTY_SECTIONS.length);
+
+    private final AtomicLongArray sectionSavedVersions =
+            new AtomicLongArray(DIRTY_SECTIONS.length);
 
     private final AtomicBoolean autoSaveInProgress = new AtomicBoolean();
 
@@ -233,7 +279,7 @@ public class ObjectCache {
                 )
         );
         if (!UltimateShop.freeVersion && !"ONCE".equals(placeholder.getMode())) {
-            markDirty();
+            markDirty(DirtySection.RANDOM_PLACEHOLDERS);
         }
     }
 
@@ -295,7 +341,7 @@ public class ObjectCache {
         String normalizedValue = placeholder.normalizeValue(nowValue);
         String previousValue = customPlaceholderCache.put(placeholder, normalizedValue);
         if (!UltimateShop.freeVersion && !Objects.equals(previousValue, normalizedValue)) {
-            markDirty();
+            markDirty(DirtySection.CUSTOM_PLACEHOLDERS);
         }
     }
 
@@ -335,14 +381,14 @@ public class ObjectCache {
         }
         if (references == null || references.isEmpty()) {
             if (favouriteProductCache.remove(menuName) != null) {
-                markDirty();
+                markDirty(DirtySection.FAVOURITES);
             }
             return;
         }
         List<FavouriteProductReference> newReferences = new ArrayList<>(references);
         List<FavouriteProductReference> previousReferences = favouriteProductCache.put(menuName, newReferences);
         if (!newReferences.equals(previousReferences)) {
-            markDirty();
+            markDirty(DirtySection.FAVOURITES);
         }
     }
 
@@ -367,7 +413,7 @@ public class ObjectCache {
             return false;
         }
         references.add(reference);
-        markDirty();
+        markDirty(DirtySection.FAVOURITES);
         return true;
     }
 
@@ -405,7 +451,7 @@ public class ObjectCache {
             favouriteProductCache.remove(menuName);
         }
         if (removed) {
-            markDirty();
+            markDirty(DirtySection.FAVOURITES);
         }
         return removed;
     }
@@ -421,7 +467,7 @@ public class ObjectCache {
         }
         FavouriteProductReference reference = references.remove(fromIndex);
         references.add(toIndex, reference);
-        markDirty();
+        markDirty(DirtySection.FAVOURITES);
         return true;
     }
 
@@ -430,7 +476,7 @@ public class ObjectCache {
             return;
         }
         if (favouriteProductCache.remove(menuName) != null) {
-            markDirty();
+            markDirty(DirtySection.FAVOURITES);
         }
     }
 
@@ -456,7 +502,7 @@ public class ObjectCache {
             favouriteProductCache.put(menuName, validReferences);
         }
         if (validReferences.size() != references.size()) {
-            markDirty();
+            markDirty(DirtySection.FAVOURITES);
         }
         return result;
     }
@@ -485,6 +531,10 @@ public class ObjectCache {
     }
 
     public void ready() {
+        for (DirtySection section : DIRTY_SECTIONS) {
+            int index = section.ordinal();
+            sectionSavedVersions.set(index, sectionModificationVersions.get(index));
+        }
         savedVersion.set(modificationVersion.get());
         ready = true;
         if (player != null) {
@@ -496,8 +546,9 @@ public class ObjectCache {
         return closed || !ready;
     }
 
-    void markDirty() {
+    void markDirty(DirtySection section) {
         if (ready && !closed) {
+            sectionModificationVersions.incrementAndGet(section.ordinal());
             modificationVersion.incrementAndGet();
         }
     }
@@ -506,12 +557,43 @@ public class ObjectCache {
         return modificationVersion.get() != savedVersion.get();
     }
 
-    public long getModificationVersion() {
-        return modificationVersion.get();
+    public SaveRevision captureSaveRevision(boolean includeAllSections) {
+        long cacheVersion = modificationVersion.get();
+        long[] sectionVersions = new long[DIRTY_SECTIONS.length];
+        boolean[] includedSections = new boolean[DIRTY_SECTIONS.length];
+        boolean hasIncludedSection = false;
+
+        for (DirtySection section : DIRTY_SECTIONS) {
+            int index = section.ordinal();
+            long sectionVersion = sectionModificationVersions.get(index);
+            sectionVersions[index] = sectionVersion;
+            if (includeAllSections || sectionVersion != sectionSavedVersions.get(index)) {
+                includedSections[index] = true;
+                hasIncludedSection = true;
+            }
+        }
+
+        // A conservative fallback keeps future unclassified mutations safe.
+        if (!hasIncludedSection && cacheVersion != savedVersion.get()) {
+            for (DirtySection section : DIRTY_SECTIONS) {
+                includedSections[section.ordinal()] = true;
+            }
+        }
+        return new SaveRevision(cacheVersion, sectionVersions, includedSections);
     }
 
-    public void markSaved(long version) {
-        savedVersion.accumulateAndGet(version, Math::max);
+    public void markSaved(SaveRevision revision) {
+        for (DirtySection section : DIRTY_SECTIONS) {
+            int index = section.ordinal();
+            if (revision.includedSections[index]) {
+                sectionSavedVersions.accumulateAndGet(
+                        index,
+                        revision.sectionVersions[index],
+                        Math::max
+                );
+            }
+        }
+        savedVersion.accumulateAndGet(revision.cacheVersion, Math::max);
     }
 
     public void finishAutoSave() {
