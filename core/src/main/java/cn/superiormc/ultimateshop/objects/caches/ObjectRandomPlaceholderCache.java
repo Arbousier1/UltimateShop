@@ -1,5 +1,6 @@
 package cn.superiormc.ultimateshop.objects.caches;
 
+import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.managers.BungeeCordManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
@@ -55,6 +56,9 @@ public class ObjectRandomPlaceholderCache {
     }
 
     public synchronized void removeRefreshDoneTime() {
+        if (refreshDoneTime != null && !UltimateShop.freeVersion) {
+            cache.markDirty();
+        }
         refreshDoneTime = null;
     }
 
@@ -111,6 +115,7 @@ public class ObjectRandomPlaceholderCache {
             }
         }
         if (needRefresh) {
+            LocalDateTime previousRefreshDoneTime = refreshDoneTime;
             switch (mode) {
                 case "TIMED":
                     refreshDoneTime = getTimedRefreshTime(time);
@@ -131,6 +136,10 @@ public class ObjectRandomPlaceholderCache {
                 default:
                     refreshDoneTime = CommonUtil.getNowTime().withYear(2999);
                     break;
+            }
+            if (!UltimateShop.freeVersion
+                    && !java.util.Objects.equals(previousRefreshDoneTime, refreshDoneTime)) {
+                cache.markDirty();
             }
 
             if (ConfigManager.configManager.getBoolean("use-times.auto-reset-mode")) {

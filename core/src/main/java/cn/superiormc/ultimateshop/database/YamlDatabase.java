@@ -151,17 +151,46 @@ public class YamlDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
+        long saveVersion = cache.getModificationVersion();
         CompletableFuture.runAsync(() -> {
-            saveData(cache);
-            if (quitServer) {
-                CacheManager.cacheManager.removeObjectCache(cache);
+            try {
+                boolean saved;
+                synchronized (cache.getSaveLock()) {
+                    saved = saveData(cache);
+                }
+                if (saved) {
+                    cache.markSaved(saveVersion);
+                }
+            } finally {
+                if (quitServer) {
+                    CacheManager.cacheManager.removeObjectCache(cache);
+                } else {
+                    cache.finishAutoSave();
+                }
             }
         }, DatabaseExecutor.getExecutor());
     }
 
-    private void saveData(ObjectCache cache) {
-        if (!dataDir.exists()) {
-            dataDir.mkdirs();
+    @Override
+    public void updateDataOnDisable(ObjectCache cache, boolean disable) {
+        long saveVersion = cache.getModificationVersion();
+        try {
+            boolean saved;
+            synchronized (cache.getSaveLock()) {
+                saved = saveData(cache);
+            }
+            if (saved) {
+                cache.markSaved(saveVersion);
+            }
+        } finally {
+            CacheManager.cacheManager.removeObjectCache(cache);
+        }
+    }
+
+    private boolean saveData(ObjectCache cache) {
+        if (!dataDir.exists() && !dataDir.mkdirs() && !dataDir.exists()) {
+            ErrorManager.errorManager.sendErrorMessage("§cError: Can not create data directory!");
+            return false;
         }
 
         File file = cache.isServer()
@@ -204,8 +233,10 @@ public class YamlDatabase extends AbstractDatabase {
 
         try {
             config.save(file);
+            return true;
         } catch (IOException e) {
             ErrorManager.errorManager.sendErrorMessage("§cError: Can not save data file: " + file.getName() + "!");
+            return false;
         }
     }
 
@@ -285,9 +316,4 @@ public class YamlDatabase extends AbstractDatabase {
         return value == null ? null : CommonUtil.stringToTime(value);
     }
 
-    @Override
-    public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        saveData(cache);
-        CacheManager.cacheManager.removeObjectCache(cache);
-    }
 }
