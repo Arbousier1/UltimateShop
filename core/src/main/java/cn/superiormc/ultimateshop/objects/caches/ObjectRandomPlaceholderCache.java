@@ -57,7 +57,7 @@ public class ObjectRandomPlaceholderCache {
 
     public synchronized void removeRefreshDoneTime() {
         if (refreshDoneTime != null && !UltimateShop.freeVersion) {
-            cache.markDirty();
+            cache.markDirty(ObjectCache.DirtySection.RANDOM_PLACEHOLDERS);
         }
         refreshDoneTime = null;
     }
@@ -139,7 +139,7 @@ public class ObjectRandomPlaceholderCache {
             }
             if (!UltimateShop.freeVersion
                     && !java.util.Objects.equals(previousRefreshDoneTime, refreshDoneTime)) {
-                cache.markDirty();
+                cache.markDirty(ObjectCache.DirtySection.RANDOM_PLACEHOLDERS);
             }
 
             if (ConfigManager.configManager.getBoolean("use-times.auto-reset-mode")) {

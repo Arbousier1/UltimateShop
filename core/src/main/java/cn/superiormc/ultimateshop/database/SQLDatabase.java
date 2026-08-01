@@ -301,15 +301,15 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
-        long saveVersion = cache.getModificationVersion();
+        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(quitServer);
         CompletableFuture.runAsync(() -> {
             try {
                 boolean saved;
                 synchronized (cache.getSaveLock()) {
-                    saved = saveAll(cache);
+                    saved = saveSections(cache, saveRevision);
                 }
                 if (saved) {
-                    cache.markSaved(saveVersion);
+                    cache.markSaved(saveRevision);
                 }
             } finally {
                 if (quitServer) {
@@ -321,24 +321,61 @@ public class SQLDatabase extends AbstractDatabase {
         }, DatabaseExecutor.getExecutor());
     }
 
-    private boolean saveAll(ObjectCache cache) {
-        boolean saved = saveUseTimes(cache);
-        saved &= saveFavourites(cache);
-        if (!UltimateShop.freeVersion) {
-            saved &= savePlaceholders(cache);
-            saved &= saveCustomPlaceholders(cache);
+    private boolean saveSections(ObjectCache cache, ObjectCache.SaveRevision saveRevision) {
+        if (!saveRevision.hasSections()) {
+            return true;
         }
-        return saved;
+
+        try (Connection conn = dataSource.getConnection()) {
+            boolean originalAutoCommit = conn.getAutoCommit();
+            try {
+                conn.setAutoCommit(false);
+                if (saveRevision.includes(ObjectCache.DirtySection.USE_TIMES)) {
+                    saveUseTimes(conn, cache);
+                }
+                if (saveRevision.includes(ObjectCache.DirtySection.FAVOURITES)) {
+                    saveFavourites(conn, cache);
+                }
+                if (!UltimateShop.freeVersion) {
+                    if (saveRevision.includes(ObjectCache.DirtySection.RANDOM_PLACEHOLDERS)) {
+                        savePlaceholders(conn, cache);
+                    }
+                    if (saveRevision.includes(ObjectCache.DirtySection.CUSTOM_PLACEHOLDERS)) {
+                        saveCustomPlaceholders(conn, cache);
+                    }
+                }
+                conn.commit();
+                return true;
+            } catch (SQLException | RuntimeException exception) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackException) {
+                    exception.addSuppressed(rollbackException);
+                }
+                exception.printStackTrace();
+                return false;
+            } finally {
+                try {
+                    if (!conn.isClosed() && conn.getAutoCommit() != originalAutoCommit) {
+                        conn.setAutoCommit(originalAutoCommit);
+                    }
+                } catch (SQLException exception) {
+                    exception.printStackTrace();
+                }
+            }
+        } catch (SQLException exception) {
+            exception.printStackTrace();
+            return false;
+        }
     }
 
-    private boolean saveFavourites(ObjectCache cache) {
+    private void saveFavourites(Connection conn, ObjectCache cache) throws SQLException {
         if (cache.isServer()) {
-            return true;
+            return;
         }
         String playerUUID = cache.getPlayer().getUniqueId().toString();
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement deletePs = conn.prepareStatement(dialect.deleteFavourites());
+        try (PreparedStatement deletePs = conn.prepareStatement(dialect.deleteFavourites());
              PreparedStatement insertPs = conn.prepareStatement(dialect.insertFavourite())) {
 
             deletePs.setString(1, playerUUID);
@@ -364,22 +401,17 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 insertPs.executeBatch();
             }
-            return true;
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
         }
     }
 
-    private boolean saveUseTimes(ObjectCache cache) {
+    private void saveUseTimes(Connection conn, ObjectCache cache) throws SQLException {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
 
         String sql = dialect.upsertUseTimes();
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             for (Map.Entry<UseTimesStorageKey, ObjectUseTimesCache> entry : cache.getSharedUseTimesCache().entrySet()) {
                 writeUseTimesCache(ps, playerUUID, entry.getKey(), entry.getValue());
@@ -388,10 +420,6 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-            return true;
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
         }
     }
 
@@ -465,15 +493,14 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private boolean savePlaceholders(ObjectCache cache) {
+    private void savePlaceholders(Connection conn, ObjectCache cache) throws SQLException {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
 
         String sql = dialect.upsertRandomPlaceholder();
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             for (ObjectRandomPlaceholderCache ph
                     : cache.getRandomPlaceholderCache().values()) {
@@ -497,22 +524,17 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-            return true;
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
         }
     }
 
-    private boolean saveCustomPlaceholders(ObjectCache cache) {
+    private void saveCustomPlaceholders(Connection conn, ObjectCache cache) throws SQLException {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
 
         String sql = dialect.upsertCustomPlaceholder();
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             for (Map.Entry<ObjectCustomPlaceholder, String> entry
                     : cache.getCustomPlaceholderCache().entrySet()) {
@@ -531,10 +553,6 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-            return true;
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
         }
     }
 
@@ -568,14 +586,14 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        long saveVersion = cache.getModificationVersion();
+        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
         try {
             boolean saved;
             synchronized (cache.getSaveLock()) {
-                saved = saveAll(cache);
+                saved = saveSections(cache, saveRevision);
             }
             if (saved) {
-                cache.markSaved(saveVersion);
+                cache.markSaved(saveRevision);
             }
         } finally {
             CacheManager.cacheManager.removeObjectCache(cache);
