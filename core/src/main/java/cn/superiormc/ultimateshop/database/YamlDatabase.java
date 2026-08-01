@@ -15,6 +15,11 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,7 +49,7 @@ public class YamlDatabase extends AbstractDatabase {
             if (!file.exists()) {
                 YamlConfiguration config = new YamlConfiguration();
                 config.set("playerName", cache.isServer() ? "global" : cache.getPlayer().getName());
-                config.save(file);
+                writeAtomically(config, file);
             }
         } catch (IOException e) {
             ErrorManager.errorManager.sendErrorMessage(
@@ -151,7 +156,7 @@ public class YamlDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
-        long saveVersion = cache.getModificationVersion();
+        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
         CompletableFuture.runAsync(() -> {
             try {
                 boolean saved;
@@ -159,7 +164,7 @@ public class YamlDatabase extends AbstractDatabase {
                     saved = saveData(cache);
                 }
                 if (saved) {
-                    cache.markSaved(saveVersion);
+                    cache.markSaved(saveRevision);
                 }
             } finally {
                 if (quitServer) {
@@ -173,14 +178,14 @@ public class YamlDatabase extends AbstractDatabase {
 
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        long saveVersion = cache.getModificationVersion();
+        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
         try {
             boolean saved;
             synchronized (cache.getSaveLock()) {
                 saved = saveData(cache);
             }
             if (saved) {
-                cache.markSaved(saveVersion);
+                cache.markSaved(saveRevision);
             }
         } finally {
             CacheManager.cacheManager.removeObjectCache(cache);
@@ -232,11 +237,42 @@ public class YamlDatabase extends AbstractDatabase {
         }
 
         try {
-            config.save(file);
+            writeAtomically(config, file);
             return true;
         } catch (IOException e) {
             ErrorManager.errorManager.sendErrorMessage("§cError: Can not save data file: " + file.getName() + "!");
             return false;
+        }
+    }
+
+    private void writeAtomically(YamlConfiguration config, File file) throws IOException {
+        Path temporaryFile = Files.createTempFile(
+                dataDir.toPath(),
+                file.getName() + ".",
+                ".tmp"
+        );
+        try {
+            Files.writeString(temporaryFile, config.saveToString(), StandardCharsets.UTF_8);
+            try {
+                Files.move(
+                        temporaryFile,
+                        file.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(
+                        temporaryFile,
+                        file.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            }
+        } finally {
+            try {
+                Files.deleteIfExists(temporaryFile);
+            } catch (IOException ignored) {
+                // Keep the original write failure if cleanup also fails.
+            }
         }
     }
 
