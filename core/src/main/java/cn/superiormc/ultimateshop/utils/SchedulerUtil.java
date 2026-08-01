@@ -114,8 +114,11 @@ public class SchedulerUtil {
     // 延迟执行任务
     public static SchedulerUtil runTaskLaterAsynchronously(Runnable task, long delayTicks) {
         if (UltimateShop.isFolia) {
-            return new SchedulerUtil(Bukkit.getGlobalRegionScheduler().runDelayed(UltimateShop.instance,
-                    scheduledTask -> task.run(), delayTicks));
+            if (delayTicks <= 0) {
+                delayTicks = 1;
+            }
+            return new SchedulerUtil(Bukkit.getAsyncScheduler().runDelayed(UltimateShop.instance,
+                    scheduledTask -> task.run(), delayTicks * 50L, TimeUnit.MILLISECONDS));
         } else {
             return new SchedulerUtil(Bukkit.getScheduler().runTaskLaterAsynchronously(UltimateShop.instance, task, delayTicks));
         }

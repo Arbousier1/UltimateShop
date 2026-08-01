@@ -9,7 +9,12 @@ import org.bukkit.Chunk;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TaskManager {
+
+    private static final long SAVE_STAGGER_TICKS = 5L;
 
     public static TaskManager taskManager;
 
@@ -32,14 +37,25 @@ public class TaskManager {
                 TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fIf this lead to server TPS drop, " +
                         "you should consider disable auto save feature at config.yml!");
             }
-            CacheManager.cacheManager.serverCache.shutCache(false);
+            List<ObjectCache> targets = new ArrayList<>();
+            ObjectCache serverCache = CacheManager.cacheManager.serverCache;
+            if (serverCache != null && !serverCache.canNotModify() && serverCache.isDirty()) {
+                targets.add(serverCache);
+            }
             for (Player player : Bukkit.getOnlinePlayers()) {
                 ObjectCache cache = CacheManager.cacheManager.getObjectCache(player);
-                if (cache != null) {
-                    cache.shutCache(false);
+                if (cache != null && cache.isDirty()) {
+                    targets.add(cache);
                 }
             }
-        }, 180L, ConfigManager.configManager.config.getLong("auto-save.period-tick", 600));
+            // 借鉴 craft-engine：错峰分发保存任务，避免同一 tick 全员齐射造成 CPU/IO 尖峰；
+            // 未发生变化的缓存会在 shutCache 内部跳过落盘。
+            int index = 0;
+            for (ObjectCache cache : targets) {
+                long delayTicks = Math.max(1L, SAVE_STAGGER_TICKS * index++);
+                SchedulerUtil.runTaskLaterAsynchronously(() -> cache.shutCache(false), delayTicks);
+            }
+        }, 180L, ConfigManager.configManager.config.getLong("auto-save.period-tick", 6000L));
     }
 
     public void initSellChestTasks() {

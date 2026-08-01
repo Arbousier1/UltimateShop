@@ -5,8 +5,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class DatabaseExecutor {
+
+    private static final long SHUTDOWN_WAIT_SECONDS = 30L;
+
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
 
     private static TrackingExecutor executor;
 
@@ -17,7 +22,15 @@ public class DatabaseExecutor {
                 threadCount,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>()
+                new LinkedBlockingQueue<>(),
+                runnable -> {
+                    Thread thread = new Thread(
+                            runnable,
+                            "UltimateShop-DB-" + THREAD_COUNTER.incrementAndGet()
+                    );
+                    thread.setDaemon(true);
+                    return thread;
+                }
         );
     }
 
@@ -39,8 +52,23 @@ public class DatabaseExecutor {
         synchronized (DatabaseExecutor.class) {
             currentExecutor = executor;
         }
-        if (currentExecutor != null) {
-            currentExecutor.awaitTasks();
+        if (currentExecutor != null
+                && !currentExecutor.awaitTasks(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
+            // 借鉴 craft-engine：等待超时后 dump 数据库线程栈，方便定位关服卡住的根因。
+            StringBuilder report = new StringBuilder(
+                    "UltimateShop database tasks did not finish within "
+                            + SHUTDOWN_WAIT_SECONDS
+                            + " seconds. Blocked thread stacks:\n"
+            );
+            Thread.getAllStackTraces().forEach((thread, stack) -> {
+                if (thread.getName().startsWith("UltimateShop-DB")) {
+                    report.append("Thread ").append(thread.getName()).append(" is blocked:\n");
+                    for (StackTraceElement element : stack) {
+                        report.append("  ").append(element).append('\n');
+                    }
+                }
+            });
+            cn.superiormc.ultimateshop.UltimateShop.instance.getLogger().warning(report.toString());
         }
     }
 
@@ -61,9 +89,9 @@ public class DatabaseExecutor {
                                  int maximumPoolSize,
                                  long keepAliveTime,
                                  TimeUnit unit,
-                                 LinkedBlockingQueue<Runnable> workQueue) {
-            super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue,
-                    runnable -> new Thread(runnable, "UltimateShop-DB"));
+                                 LinkedBlockingQueue<Runnable> workQueue,
+                                 java.util.concurrent.ThreadFactory threadFactory) {
+            super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
         }
 
         @Override
@@ -95,16 +123,23 @@ public class DatabaseExecutor {
             }
         }
 
-        private void awaitTasks() {
+        private boolean awaitTasks(long timeout, TimeUnit unit) {
+            long remainingNanos = unit.toNanos(timeout);
+            long deadline = System.nanoTime() + remainingNanos;
             synchronized (taskLock) {
                 while (pendingTasks > 0) {
+                    if (remainingNanos <= 0L) {
+                        return false;
+                    }
                     try {
-                        taskLock.wait();
+                        TimeUnit.NANOSECONDS.timedWait(taskLock, remainingNanos);
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
-                        return;
+                        return false;
                     }
+                    remainingNanos = deadline - System.nanoTime();
                 }
+                return true;
             }
         }
     }

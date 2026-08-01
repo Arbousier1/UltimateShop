@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class ObjectUseTimesCache {
 
@@ -181,19 +182,35 @@ public class ObjectUseTimesCache {
     }
 
     public synchronized void addSellRevenue(double amount) {
+        double previous = totalSellRevenue;
         totalSellRevenue += amount;
+        if (Double.compare(previous, totalSellRevenue) != 0) {
+            touch();
+        }
     }
 
     public synchronized void addBuyCost(double amount) {
+        double previous = totalBuyCost;
         totalBuyCost += amount;
+        if (Double.compare(previous, totalBuyCost) != 0) {
+            touch();
+        }
     }
 
     public synchronized void setTotalSellRevenue(double amount) {
+        if (Double.compare(totalSellRevenue, amount) == 0) {
+            return;
+        }
         totalSellRevenue = amount;
+        touch();
     }
 
     public synchronized void setTotalBuyCost(double amount) {
+        if (Double.compare(totalBuyCost, amount) == 0) {
+            return;
+        }
         totalBuyCost = amount;
+        touch();
     }
 
     public void setBuyUseTimes(int value) {
@@ -219,6 +236,8 @@ public class ObjectUseTimesCache {
             return;
         }
 
+        int previousUseTimes = state.useTimes;
+        int previousTotalUseTimes = state.totalUseTimes;
         int maxTimes = getMaxTimes(direction);
         if (!isReset) {
             state.totalUseTimes = addWithoutOverflow(
@@ -235,6 +254,9 @@ public class ObjectUseTimesCache {
                 ? Math.min(requestedValue, maxTimes)
                 : requestedValue;
         sendBungee(direction.timesChannel, String.valueOf(requestedValue), notUseBungee);
+        if (previousUseTimes != state.useTimes || previousTotalUseTimes != state.totalUseTimes) {
+            touch();
+        }
     }
 
     private int addWithoutOverflow(int currentValue, long delta) {
@@ -269,6 +291,8 @@ public class ObjectUseTimesCache {
                              boolean notUseBungee,
                              boolean updateLastResetTime) {
         UseTimesState state = state(direction);
+        LocalDateTime previousLastTime = state.lastTime;
+        LocalDateTime previousLastResetTime = state.lastResetTime;
         if (time == null && updateLastResetTime) {
             state.lastResetTime = state.cooldownTime == null ? CommonUtil.getNowTime() : state.cooldownTime;
         }
@@ -276,6 +300,10 @@ public class ObjectUseTimesCache {
         sendBungee(direction.lastTimeChannel, formatTime(time), notUseBungee);
         if (time != null && resetTimeDependsOnLastTime(direction)) {
             initResetTask(direction, null);
+        }
+        if (!Objects.equals(previousLastTime, state.lastTime)
+                || !Objects.equals(previousLastResetTime, state.lastResetTime)) {
+            touch();
         }
     }
 
@@ -301,6 +329,7 @@ public class ObjectUseTimesCache {
         }
 
         UseTimesState state = state(direction);
+        LocalDateTime previousCooldownTime = state.cooldownTime;
         LocalDateTime now = CommonUtil.getNowTime();
         if (state.cooldownTime != null && !state.cooldownTime.isBefore(now)) {
             return state.cooldownTime;
@@ -328,6 +357,9 @@ public class ObjectUseTimesCache {
                 break;
             default:
                 break;
+        }
+        if (!Objects.equals(previousCooldownTime, state.cooldownTime)) {
+            touch();
         }
         return state.cooldownTime;
     }
@@ -623,6 +655,10 @@ public class ObjectUseTimesCache {
         return direction == Direction.BUY ? buy : sell;
     }
 
+    private void touch() {
+        cache.markDirty();
+    }
+
     public synchronized List<PeriodRecord> getSellHistory() {
         return new ArrayList<>(sellHistory);
     }
@@ -649,26 +685,35 @@ public class ObjectUseTimesCache {
         } else {
             sellHistory.add(new PeriodRecord(0, currentState.useTimes, resetTime));
         }
+        touch();
     }
 
     public synchronized void trimHistory(int maxSize) {
         if (maxSize <= 0) {
             return;
         }
+        boolean changed = false;
         while (sellHistory.size() > maxSize) {
             sellHistory.remove(0);
+            changed = true;
         }
         while (buyHistory.size() > maxSize) {
             buyHistory.remove(0);
+            changed = true;
+        }
+        if (changed) {
+            touch();
         }
     }
 
     public synchronized void addSellHistoryRecord(int sellTimes, String resetTime) {
         sellHistory.add(new PeriodRecord(0, sellTimes, resetTime != null ? CommonUtil.stringToTime(resetTime) : null));
+        touch();
     }
 
     public synchronized void addBuyHistoryRecord(int buyTimes, String resetTime) {
         buyHistory.add(new PeriodRecord(buyTimes, 0, resetTime != null ? CommonUtil.stringToTime(resetTime) : null));
+        touch();
     }
 
     public synchronized List<Map<String, Object>> getSellHistorySerialized() {

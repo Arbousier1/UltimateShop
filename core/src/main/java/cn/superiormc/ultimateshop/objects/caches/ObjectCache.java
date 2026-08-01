@@ -1,5 +1,6 @@
 package cn.superiormc.ultimateshop.objects.caches;
 
+import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.DatabaseManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
@@ -15,7 +16,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ObjectCache {
 
@@ -39,6 +42,15 @@ public class ObjectCache {
 
     private volatile boolean closed = false;
 
+    // 借鉴 craft-engine 的 unsaved 机制。使用版本号而不是单个 boolean，避免保存期间发生的
+    // 新修改被旧保存任务错误地清除。
+    private final AtomicLong modificationVersion = new AtomicLong();
+
+    private final AtomicLong savedVersion = new AtomicLong();
+
+    // 同一个缓存可能同时遇到自动保存和玩家退出保存，串行化落盘可避免旧任务覆盖新数据。
+    private final Object saveLock = new Object();
+
     public ObjectCache() {
         this.server = true;
         this.player = null;
@@ -59,6 +71,9 @@ public class ObjectCache {
 
     public void shutCache(boolean quitServer) {
         if (canNotModify()) {
+            return;
+        }
+        if (!quitServer && !isDirty()) {
             return;
         }
         DatabaseManager.databaseManager.database.updateData(this, quitServer);
@@ -193,6 +208,9 @@ public class ObjectCache {
                         CommonUtil.stringToTime(refreshDoneTime)
                 )
         );
+        if (!UltimateShop.freeVersion && !"ONCE".equals(placeholder.getMode())) {
+            markDirty();
+        }
     }
 
     public void setRandomPlaceholderCache(String id,
@@ -250,7 +268,11 @@ public class ObjectCache {
         if (!checkCustomPlaceholderScope(placeholder)) {
             return;
         }
-        customPlaceholderCache.put(placeholder, placeholder.normalizeValue(nowValue));
+        String normalizedValue = placeholder.normalizeValue(nowValue);
+        String previousValue = customPlaceholderCache.put(placeholder, normalizedValue);
+        if (!UltimateShop.freeVersion && !Objects.equals(previousValue, normalizedValue)) {
+            markDirty();
+        }
     }
 
     public void setCustomPlaceholderCache(String id, String nowValue) {
@@ -288,10 +310,16 @@ public class ObjectCache {
             return;
         }
         if (references == null || references.isEmpty()) {
-            favouriteProductCache.remove(menuName);
+            if (favouriteProductCache.remove(menuName) != null) {
+                markDirty();
+            }
             return;
         }
-        favouriteProductCache.put(menuName, new ArrayList<>(references));
+        List<FavouriteProductReference> newReferences = new ArrayList<>(references);
+        List<FavouriteProductReference> previousReferences = favouriteProductCache.put(menuName, newReferences);
+        if (!newReferences.equals(previousReferences)) {
+            markDirty();
+        }
     }
 
     public synchronized List<FavouriteProductReference> getFavouriteProductReferences(String menuName) {
@@ -315,6 +343,7 @@ public class ObjectCache {
             return false;
         }
         references.add(reference);
+        markDirty();
         return true;
     }
 
@@ -351,6 +380,9 @@ public class ObjectCache {
         if (references.isEmpty()) {
             favouriteProductCache.remove(menuName);
         }
+        if (removed) {
+            markDirty();
+        }
         return removed;
     }
 
@@ -365,6 +397,7 @@ public class ObjectCache {
         }
         FavouriteProductReference reference = references.remove(fromIndex);
         references.add(toIndex, reference);
+        markDirty();
         return true;
     }
 
@@ -372,7 +405,9 @@ public class ObjectCache {
         if (menuName == null || menuName.isEmpty()) {
             return;
         }
-        favouriteProductCache.remove(menuName);
+        if (favouriteProductCache.remove(menuName) != null) {
+            markDirty();
+        }
     }
 
     public synchronized Map<FavouriteProductReference, ObjectItem> getResolvedFavouriteProducts(String menuName) {
@@ -396,10 +431,13 @@ public class ObjectCache {
         } else if (validReferences.size() != references.size()) {
             favouriteProductCache.put(menuName, validReferences);
         }
+        if (validReferences.size() != references.size()) {
+            markDirty();
+        }
         return result;
     }
 
-    public Map<String, List<FavouriteProductReference>> getFavouriteProductCache() {
+    public synchronized Map<String, List<FavouriteProductReference>> getFavouriteProductCache() {
         Map<String, List<FavouriteProductReference>> result = new LinkedHashMap<>();
         for (Map.Entry<String, List<FavouriteProductReference>> entry : favouriteProductCache.entrySet()) {
             result.put(entry.getKey(), new ArrayList<>(entry.getValue()));
@@ -423,6 +461,7 @@ public class ObjectCache {
     }
 
     public void ready() {
+        savedVersion.set(modificationVersion.get());
         ready = true;
         if (player != null) {
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fLoaded player data: " + player.getName() + ".");
@@ -431,5 +470,27 @@ public class ObjectCache {
 
     public boolean canNotModify() {
         return closed || !ready;
+    }
+
+    void markDirty() {
+        if (ready && !closed) {
+            modificationVersion.incrementAndGet();
+        }
+    }
+
+    public boolean isDirty() {
+        return modificationVersion.get() != savedVersion.get();
+    }
+
+    public long getModificationVersion() {
+        return modificationVersion.get();
+    }
+
+    public void markSaved(long version) {
+        savedVersion.accumulateAndGet(version, Math::max);
+    }
+
+    public Object getSaveLock() {
+        return saveLock;
     }
 }

@@ -301,22 +301,37 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
+        long saveVersion = cache.getModificationVersion();
         CompletableFuture.runAsync(() -> {
-            saveUseTimes(cache);
-            saveFavourites(cache);
-            if (!UltimateShop.freeVersion) {
-                savePlaceholders(cache);
-                saveCustomPlaceholders(cache);
-            }
-            if (quitServer) {
-                CacheManager.cacheManager.removeObjectCache(cache);
+            try {
+                boolean saved;
+                synchronized (cache.getSaveLock()) {
+                    saved = saveAll(cache);
+                }
+                if (saved) {
+                    cache.markSaved(saveVersion);
+                }
+            } finally {
+                if (quitServer) {
+                    CacheManager.cacheManager.removeObjectCache(cache);
+                }
             }
         }, DatabaseExecutor.getExecutor());
     }
 
-    private void saveFavourites(ObjectCache cache) {
+    private boolean saveAll(ObjectCache cache) {
+        boolean saved = saveUseTimes(cache);
+        saved &= saveFavourites(cache);
+        if (!UltimateShop.freeVersion) {
+            saved &= savePlaceholders(cache);
+            saved &= saveCustomPlaceholders(cache);
+        }
+        return saved;
+    }
+
+    private boolean saveFavourites(ObjectCache cache) {
         if (cache.isServer()) {
-            return;
+            return true;
         }
         String playerUUID = cache.getPlayer().getUniqueId().toString();
 
@@ -347,13 +362,14 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 insertPs.executeBatch();
             }
-
+            return true;
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
     }
 
-    private void saveUseTimes(ObjectCache cache) {
+    private boolean saveUseTimes(ObjectCache cache) {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
@@ -370,9 +386,10 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-
+            return true;
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
     }
 
@@ -446,7 +463,7 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private void savePlaceholders(ObjectCache cache) {
+    private boolean savePlaceholders(ObjectCache cache) {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
@@ -478,13 +495,14 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-
+            return true;
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
     }
 
-    private void saveCustomPlaceholders(ObjectCache cache) {
+    private boolean saveCustomPlaceholders(ObjectCache cache) {
         String playerUUID = cache.isServer()
                 ? "Global-Server"
                 : cache.getPlayer().getUniqueId().toString();
@@ -511,9 +529,10 @@ public class SQLDatabase extends AbstractDatabase {
             if (dialect.supportBatch()) {
                 ps.executeBatch();
             }
-
+            return true;
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
     }
 
@@ -547,15 +566,18 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        saveUseTimes(cache);
-        saveFavourites(cache);
-
-        if (!UltimateShop.freeVersion) {
-            savePlaceholders(cache);
-            saveCustomPlaceholders(cache);
+        long saveVersion = cache.getModificationVersion();
+        try {
+            boolean saved;
+            synchronized (cache.getSaveLock()) {
+                saved = saveAll(cache);
+            }
+            if (saved) {
+                cache.markSaved(saveVersion);
+            }
+        } finally {
+            CacheManager.cacheManager.removeObjectCache(cache);
         }
-
-        CacheManager.cacheManager.removeObjectCache(cache);
     }
 
     public void logTransaction(LocalDateTime createdAt,
