@@ -2,6 +2,7 @@ package cn.superiormc.ultimateshop.objects.caches;
 
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.database.DatabaseExecutor;
+import cn.superiormc.ultimateshop.managers.CacheManager;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.DatabaseManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
@@ -138,6 +139,7 @@ public class ObjectCache {
                 throw exception;
             }
             if (quitServer) {
+                CacheManager.cacheManager.removeObjectCache(this);
                 cancelResetTasks();
             }
             return;
@@ -148,6 +150,7 @@ public class ObjectCache {
             throw exception;
         }
         if (quitServer) {
+            CacheManager.cacheManager.removeObjectCache(this);
             cancelResetTasks();
         }
     }
@@ -263,21 +266,15 @@ public class ObjectCache {
                                           String refreshDoneTime,
                                           List<String> nowValue) {
 
-        if (placeholder == null || nowValue == null) {
+        if (closed || placeholder == null || nowValue == null) {
             return;
         }
         if (!checkPlaceholderScope(placeholder)) {
             return;
         }
-        randomPlaceholderCache.put(
-                placeholder,
-                new ObjectRandomPlaceholderCache(
-                        this,
-                        placeholder,
-                        nowValue,
-                        CommonUtil.stringToTime(refreshDoneTime)
-                )
-        );
+        ObjectRandomPlaceholderCache placeholderCache = randomPlaceholderCache.computeIfAbsent(
+                placeholder, key -> new ObjectRandomPlaceholderCache(this, key));
+        placeholderCache.loadState(nowValue, CommonUtil.stringToTime(refreshDoneTime));
         if (!UltimateShop.freeVersion && !"ONCE".equals(placeholder.getMode())) {
             markDirty(DirtySection.RANDOM_PLACEHOLDERS);
         }
@@ -295,19 +292,16 @@ public class ObjectCache {
     }
 
     public ObjectRandomPlaceholderCache getRandomPlaceholderCache(ObjectRandomPlaceholder placeholder) {
-        if (placeholder == null) {
+        if (closed || placeholder == null) {
             return null;
         }
         if (!checkPlaceholderScope(placeholder)) {
             return null;
         }
-        ObjectRandomPlaceholderCache existingCache = randomPlaceholderCache.get(placeholder);
-        if (existingCache != null) {
-            return existingCache;
-        }
-        ObjectRandomPlaceholderCache createdCache = new ObjectRandomPlaceholderCache(this, placeholder);
-        ObjectRandomPlaceholderCache racedCache = randomPlaceholderCache.putIfAbsent(placeholder, createdCache);
-        return racedCache == null ? createdCache : racedCache;
+        ObjectRandomPlaceholderCache placeholderCache = randomPlaceholderCache.computeIfAbsent(
+                placeholder, key -> new ObjectRandomPlaceholderCache(this, key));
+        placeholderCache.initialize();
+        return placeholderCache;
     }
 
     private boolean checkPlaceholderScope(ObjectRandomPlaceholder placeholder) {

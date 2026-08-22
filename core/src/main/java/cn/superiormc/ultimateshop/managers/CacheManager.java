@@ -58,7 +58,7 @@ public class CacheManager {
     }
 
     public void saveObjectCache(Player player) {
-        ObjectCache cache = getObjectCache(player);
+        ObjectCache cache = playerCacheMap.get(player.getUniqueId());
         if (cache == null) {
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §cCan not save player data: " + player.getName() + "! " +
                     "This is usually because this player joined the server before server fully started OR other plugins kicked this player" +
@@ -74,7 +74,7 @@ public class CacheManager {
     }
 
     public void saveObjectCacheOnDisable(Player player, boolean disable) {
-        ObjectCache cache = getObjectCache(player);
+        ObjectCache cache = playerCacheMap.get(player.getUniqueId());
         if (cache == null) {
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §cCan not save player data: " + player.getName() + "! " +
                     "This is usually because this player joined the server before server fully started OR other plugins kicked this player" +

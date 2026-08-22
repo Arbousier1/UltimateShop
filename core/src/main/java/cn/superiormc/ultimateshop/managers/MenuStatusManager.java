@@ -12,6 +12,7 @@ import cn.superiormc.ultimateshop.gui.inv.editor.EditorFileListGUI;
 import cn.superiormc.ultimateshop.gui.inv.editor.EditorPresetGUI;
 import cn.superiormc.ultimateshop.editor.EditorContext;
 import cn.superiormc.ultimateshop.gui.Prompt;
+import cn.superiormc.ultimateshop.utils.CommandUtil;
 import cn.superiormc.ultimateshop.gui.PromptUtil;
 import cn.superiormc.ultimateshop.gui.inv.editor.EditorRootGUI;
 import cn.superiormc.ultimateshop.gui.inv.editor.EditorSectionGUI;
@@ -21,6 +22,7 @@ import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
 import cn.superiormc.ultimateshop.objects.ObjectShop;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.SchedulerUtil;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -194,11 +196,32 @@ public class MenuStatusManager {
     }
 
     public void clear(Player player) {
-        contexts.remove(player.getUniqueId());
-        prompts.remove(player.getUniqueId());
-        openGuis.remove(player.getUniqueId());
-        guiHistories.remove(player.getUniqueId());
-        returningBack.remove(player.getUniqueId());
+        if (player == null) {
+            return;
+        }
+        cancelPrompt(player);
+        CommandUtil.cancelGUIUpdate(player);
+        UUID uuid = player.getUniqueId();
+        contexts.remove(uuid);
+        openGuis.remove(uuid);
+        guiHistories.remove(uuid);
+        returningBack.remove(uuid);
+    }
+
+    public void clearForReload(Player player) {
+        if (player == null) {
+            return;
+        }
+        player.closeInventory();
+        clear(player);
+    }
+
+    public void onPluginReload() {
+        Bukkit.getOnlinePlayers().forEach(this::clearForReload);
+    }
+
+    public void onPluginDisable() {
+        Bukkit.getOnlinePlayers().forEach(this::clearForReload);
     }
 
     public boolean hasPrompt(Player player) {
