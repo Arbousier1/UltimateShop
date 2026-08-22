@@ -3,33 +3,15 @@ package cn.superiormc.ultimateshop.utils;
 import cn.superiormc.ultimateshop.gui.GUIStatus;
 import cn.superiormc.ultimateshop.managers.MenuStatusManager;
 import org.bukkit.Bukkit;
-import org.bukkit.command.CommandMap;
-import org.bukkit.command.defaults.BukkitCommand;
 import org.bukkit.entity.Player;
 
-import java.lang.reflect.Field;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class CommandUtil {
 
-    public static void registerCustomCommand(BukkitCommand command) {
-        CommandMap commandMap;
-        try {
-            Field commandMapField = Bukkit.getServer().getClass().getDeclaredField("commandMap");
-            commandMapField.setAccessible(true);
-            commandMap = (CommandMap) commandMapField.get(Bukkit.getServer());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
-        if (commandMap == null) {
-            return;
-        }
-        commandMap.register("ultimateshop", command);
-    }
-
-    private static final Map<Player, SchedulerUtil> guiUpdateTask = new ConcurrentHashMap<>();
+    private static final Map<UUID, SchedulerUtil> guiUpdateTask = new ConcurrentHashMap<>();
 
     public static void updateGUI(Player player) {
         if (player == null) {
@@ -42,22 +24,23 @@ public class CommandUtil {
             return;
         }
 
-        SchedulerUtil task = guiUpdateTask.remove(player);
+        UUID playerUUID = player.getUniqueId();
+        SchedulerUtil task = guiUpdateTask.remove(playerUUID);
         if (task != null) {
             task.cancel();
         }
-        guiUpdateTask.put(player,
+        guiUpdateTask.put(playerUUID,
                 SchedulerUtil.runTaskLater(() -> {
                     GUIStatus currentStatus = MenuStatusManager.menuStatusManager.getGUIStatus(player);
                     if (currentStatus != null && currentStatus.getGUI() != null) {
                         currentStatus.getGUI().updateGUI();
                     }
-                    guiUpdateTask.remove(player);
+                    guiUpdateTask.remove(playerUUID);
                 }, 20L));
     }
 
     public static void cancelGUIUpdate(Player player) {
-        SchedulerUtil task = guiUpdateTask.remove(player);
+        SchedulerUtil task = guiUpdateTask.remove(player.getUniqueId());
         if (task != null) {
             task.cancel();
         }

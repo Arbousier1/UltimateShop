@@ -3,6 +3,7 @@ package cn.superiormc.ultimateshop.objects.menus;
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.gui.inv.CommonGUI;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
+import cn.superiormc.ultimateshop.managers.DynamicCommandManager;
 import cn.superiormc.ultimateshop.managers.LanguageManager;
 import cn.superiormc.ultimateshop.objects.ObjectShop;
 import cn.superiormc.ultimateshop.objects.ObjectThingRun;
@@ -11,7 +12,6 @@ import cn.superiormc.ultimateshop.objects.buttons.ObjectButton;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
 import cn.superiormc.ultimateshop.objects.items.ObjectAction;
 import cn.superiormc.ultimateshop.objects.items.ObjectCondition;
-import cn.superiormc.ultimateshop.utils.CommandUtil;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
 import org.bukkit.command.CommandSender;
@@ -46,7 +46,7 @@ public class ObjectMenu {
 
     public ConfigurationSection menuConfigs;
 
-    protected final Map<MenuSender, Map<Integer, AbstractButton>> menuItems = new HashMap<>();
+    protected final Map<Integer, AbstractButton> menuItems = new TreeMap<>();
 
     protected final Map<String, AbstractButton> buttonItems = new HashMap<>();
 
@@ -189,24 +189,20 @@ public class ObjectMenu {
         this.dynamicLayout = menuConfigs.getBoolean("dynamic-layout", false) && !UltimateShop.freeVersion;
     }
 
-    public void initShopItems(MenuSender menuSender) {
+    private void buildShopItems(MenuSender menuSender, Map<Integer, AbstractButton> target) {
         if (menuConfigs == null) {
             return;
         }
-        if (!dynamicLayout) {
-            menuSender = MenuSender.empty;
-        }
 
-        MenuSender tempVal1 = menuSender;
         parseLayout(menuConfigs.getStringList("layout"), (slot, rawId) -> {
             String id = rawId;
-            if (!tempVal1.isStatic()) {
-                id = TextUtil.withPAPI(id, tempVal1.getPlayer());
+            if (!menuSender.isStatic()) {
+                id = TextUtil.withPAPI(id, menuSender.getPlayer());
             }
 
-            AbstractButton button = getButtonByLayoutId(id, tempVal1, true);
+            AbstractButton button = getButtonByLayoutId(id, menuSender, true);
             if (button != null) {
-                getButtons(tempVal1).put(slot, button);
+                target.put(slot, button);
             }
         });
     }
@@ -229,28 +225,23 @@ public class ObjectMenu {
 
         if (!dynamicLayout) {
             if (type == MenuType.Shop) {
-                initShopItems(MenuSender.empty);
+                buildShopItems(MenuSender.empty, menuItems);
             } else {
-                initButtonItems(MenuSender.empty);
+                buildButtonItems(MenuSender.empty, menuItems);
             }
         }
     }
 
-    public void initButtonItems(MenuSender menuSender) {
-        if (!dynamicLayout) {
-            menuSender = MenuSender.empty;
-        }
-
-        MenuSender tempVal1 = menuSender;
+    private void buildButtonItems(MenuSender menuSender, Map<Integer, AbstractButton> target) {
         parseLayout(menuConfigs.getStringList("layout"), (slot, rawId) -> {
             String id = rawId;
-            if (!tempVal1.isStatic()) {
-                id = TextUtil.withPAPI(id, tempVal1.getPlayer());
+            if (!menuSender.isStatic()) {
+                id = TextUtil.withPAPI(id, menuSender.getPlayer());
             }
 
-            AbstractButton buttonObj = getButtonByLayoutId(id, tempVal1, false);
+            AbstractButton buttonObj = getButtonByLayoutId(id, menuSender, false);
             if (buttonObj != null) {
-                getButtons(tempVal1).putIfAbsent(slot, buttonObj);
+                target.putIfAbsent(slot, buttonObj);
             }
         });
     }
@@ -310,22 +301,25 @@ public class ObjectMenu {
     private void initCustomCommand() {
         String commandName = menuConfigs.getString("custom-command.name");
         if (commandName != null && !commandName.isEmpty()) {
-            ObjectMenu menu = this;
-            BukkitCommand command = new BukkitCommand(commandName) {
-                @Override
-                public boolean execute(CommandSender sender, String label, String[] args) {
-                    if (!(sender instanceof Player)) {
-                        LanguageManager.languageManager.sendStringText("error.in-game");
-                        return true;
-                    }
-                    CommonGUI.openGUI((Player) sender, fileName, false, false);
-                    return true;
-                }
-            };
-            command.setDescription(menu.getString("custom-command.description", "UltimateShop Custom Command for " + commandName));
-            CommandUtil.registerCustomCommand(command);
+            BukkitCommand command = createCustomCommand(commandName, fileName);
+            command.setDescription(getString("custom-command.description", "UltimateShop Custom Command for " + commandName));
+            DynamicCommandManager.register(command);
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §cRegistered custom command for menu: " + fileName + ".");
         }
+    }
+
+    private static BukkitCommand createCustomCommand(String commandName, String menuId) {
+        return new BukkitCommand(commandName) {
+            @Override
+            public boolean execute(CommandSender sender, String label, String[] args) {
+                if (!(sender instanceof Player player)) {
+                    LanguageManager.languageManager.sendStringText("error.in-game");
+                    return true;
+                }
+                CommonGUI.openGUI(player, menuId, false, false);
+                return true;
+            }
+        };
     }
 
     public String getString(String path, String defaultValue) {
@@ -340,19 +334,17 @@ public class ObjectMenu {
     }
 
     public Map<Integer, AbstractButton> getMenu(MenuSender menuSender) {
-        if (dynamicLayout) {
-            getButtons(menuSender).clear();
-            if (type == MenuType.Shop) {
-                initShopItems(menuSender);
-            } else {
-                initButtonItems(menuSender);
-            }
+        if (!dynamicLayout) {
+            return new TreeMap<>(menuItems);
         }
-        Map<Integer, AbstractButton> tempVal1 = getButtons(menuSender);
-        if (tempVal1 == null) {
-            return new TreeMap<>(menuItems.get(MenuSender.empty));
+        MenuSender effectiveSender = menuSender == null ? MenuSender.empty : menuSender;
+        Map<Integer, AbstractButton> result = new TreeMap<>(menuItems);
+        if (type == MenuType.Shop) {
+            buildShopItems(effectiveSender, result);
+        } else {
+            buildButtonItems(effectiveSender, result);
         }
-        return new TreeMap<>(tempVal1);
+        return result;
     }
 
     public ObjectCondition getCondition() {
@@ -392,20 +384,7 @@ public class ObjectMenu {
     }
 
     protected Map<Integer, AbstractButton> getButtons() {
-        return getButtons(MenuSender.empty);
-    }
-
-    protected Map<Integer, AbstractButton> getButtons(MenuSender menuSender) {
-        if (!dynamicLayout) {
-            menuSender = MenuSender.empty;
-        }
-
-        Map<Integer, AbstractButton> tempVal1 = menuItems.get(menuSender);
-        if (tempVal1 == null) {
-            menuItems.put(menuSender, new TreeMap<>());
-            tempVal1 = menuItems.get(menuSender);
-        }
-        return tempVal1;
+        return menuItems;
     }
 
     protected void parseLayout(List<String> layout, BiConsumer<Integer, String> itemHandler) {

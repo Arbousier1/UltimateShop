@@ -57,6 +57,18 @@ public class DatabaseExecutor {
         }
     }
 
+    public static void quiesce() {
+        stopAcceptingTasks();
+    }
+
+    public static synchronized void resume() {
+        if (executor == null || executor.isShutdown()) {
+            executor = createExecutor();
+        } else {
+            executor.resumeAcceptingTasks();
+        }
+    }
+
     public static boolean isAcceptingTasks() {
         TrackingExecutor currentExecutor;
         synchronized (DatabaseExecutor.class) {
@@ -152,6 +164,12 @@ public class DatabaseExecutor {
         private void stopAcceptingTasks() {
             synchronized (taskLock) {
                 acceptingTasks = false;
+            }
+        }
+
+        private void resumeAcceptingTasks() {
+            synchronized (taskLock) {
+                acceptingTasks = true;
             }
         }
 

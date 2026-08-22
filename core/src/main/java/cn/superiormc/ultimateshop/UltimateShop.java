@@ -112,8 +112,10 @@ public final class UltimateShop extends JavaPlugin {
         if (ChinaHolidayManager.chinaHolidayManager != null) {
             ChinaHolidayManager.chinaHolidayManager.shutdown();
         }
-        ListenerManager.listenerManager.unregisterAllListener();
         TaskManager.taskManager.cancelTask();
+        ListenerManager.listenerManager.unregisterAllListener();
+        MenuStatusManager.menuStatusManager.onPluginDisable();
+        DynamicCommandManager.unregisterAll();
         DatabaseExecutor.stopAcceptingTasks();
         TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fWaiting up to 30 seconds for pending database tasks to finish...");
         DatabaseExecutor.await();

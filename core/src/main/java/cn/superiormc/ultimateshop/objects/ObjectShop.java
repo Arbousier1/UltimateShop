@@ -3,6 +3,7 @@ package cn.superiormc.ultimateshop.objects;
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.gui.inv.ShopGUI;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
+import cn.superiormc.ultimateshop.managers.DynamicCommandManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
 import cn.superiormc.ultimateshop.managers.LanguageManager;
 import cn.superiormc.ultimateshop.objects.buttons.AbstractButton;
@@ -11,7 +12,6 @@ import cn.superiormc.ultimateshop.objects.buttons.ObjectCopyItem;
 import cn.superiormc.ultimateshop.objects.menus.MenuSender;
 import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
 import cn.superiormc.ultimateshop.objects.buttons.ObjectItem;
-import cn.superiormc.ultimateshop.utils.CommandUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.defaults.BukkitCommand;
@@ -126,22 +126,31 @@ public class ObjectShop {
     private void initCustomCommand() {
         String commandName = config.getString("settings.custom-command.name");
         if (commandName != null && !commandName.isEmpty()) {
-            ObjectShop shop = this;
-            BukkitCommand command = new BukkitCommand(commandName) {
-                @Override
-                public boolean execute(CommandSender sender, String label, String[] args) {
-                    if (!(sender instanceof Player)) {
-                        LanguageManager.languageManager.sendStringText("error.in-game");
-                        return true;
-                    }
-                    ShopGUI.openGUI((Player) sender, shop, false, false);
-                    return true;
-                }
-            };
+            BukkitCommand command = createCustomCommand(commandName, shopName);
             command.setDescription(config.getString("settings.custom-command.description", "UltimateShop Custom Command for " + commandName));
-            CommandUtil.registerCustomCommand(command);
+            DynamicCommandManager.register(command);
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fRegistered custom command for shop: " + shopName + ".");
         }
+    }
+
+    private static BukkitCommand createCustomCommand(String commandName, String shopId) {
+        return new BukkitCommand(commandName) {
+            @Override
+            public boolean execute(CommandSender sender, String label, String[] args) {
+                if (!(sender instanceof Player player)) {
+                    LanguageManager.languageManager.sendStringText("error.in-game");
+                    return true;
+                }
+
+                ObjectShop shop = ConfigManager.configManager.getShop(shopId);
+                if (shop == null) {
+                    return true;
+                }
+
+                ShopGUI.openGUI(player, shop, false, false);
+                return true;
+            }
+        };
     }
 
     public YamlConfiguration getShopConfig() {

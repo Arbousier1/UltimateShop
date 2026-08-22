@@ -14,23 +14,30 @@ public class ReloadPlugin {
     public static void reload(CommandSender sender) {
         LanguageManager.languageManager.sendStringText(sender, "plugin.reloading");
         UltimateShop.instance.reloadConfig();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            MenuStatusManager.menuStatusManager.removeGUIStatus(player);
-            if (!UltimateShop.freeVersion) {
-                SellStickListener.playerList.remove(player);
-            }
-            CacheManager.cacheManager.saveObjectCacheOnDisable(player, false);
-        }
-        if (CacheManager.cacheManager.serverCache != null) {
-            CacheManager.cacheManager.serverCache.shutCacheOnDisable(false);
-        }
-        CacheManager.cacheManager.shutdown();
+        DynamicCommandManager.unregisterAll();
         TaskManager.taskManager.cancelTask();
-        ObjectMenu.commonMenus.clear();
-        ObjectMenu.notCommonMenuNames.clear();
-        new ConfigManager();
-        new ItemManager();
-        new LanguageManager();
+        MenuStatusManager.menuStatusManager.onPluginReload();
+        DatabaseExecutor.quiesce();
+        try {
+            DatabaseExecutor.await();
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (!UltimateShop.freeVersion) {
+                    SellStickListener.playerList.remove(player);
+                }
+                CacheManager.cacheManager.saveObjectCacheOnDisable(player, false);
+            }
+            if (CacheManager.cacheManager.serverCache != null) {
+                CacheManager.cacheManager.serverCache.shutCacheOnDisable(false);
+            }
+            CacheManager.cacheManager.shutdown();
+            ObjectMenu.commonMenus.clear();
+            ObjectMenu.notCommonMenuNames.clear();
+            new ConfigManager();
+            new ItemManager();
+            new LanguageManager();
+        } finally {
+            DatabaseExecutor.resume();
+        }
         new CacheManager();
         new TaskManager();
         LanguageManager.languageManager.sendStringText(sender, "plugin.reloaded");
