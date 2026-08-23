@@ -17,7 +17,7 @@ tasks.shadowJar {
     relocate("org.bstats", "cn.superiormc.ultimateshop.bstats")
     relocate("com.zaxxer.hikari", "cn.superiormc.ultimateshop.libs.hikari")
     relocate("com.cronutils", "cn.superiormc.ultimateshop.libs.cronutils")
-    relocate("com.ezylang", "cn.superiormc.ultimateshop.libs.evalex")
+    relocate("net.momirealms.sparrow", "cn.superiormc.ultimateshop.libs.sparrow")
     relocate("org.json", "cn.superiormc.ultimateshop.libs.json")
     relocate("org.slf4j", "cn.superiormc.ultimateshop.libs.slf4j")
     relocate("cn.gtemc.itembridge", "cn.superiormc.ultimateshop.libs.itembridge")
