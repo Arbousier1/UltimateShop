@@ -46,6 +46,7 @@ subprojects {
         maven("https://repo.william278.net/releases")
         maven("https://repo.glaremasters.me/repository/towny/")
         maven("https://repo.momirealms.net/snapshots")
+        maven("https://repo.momirealms.net/releases")
         maven("https://repo.bg-software.com/repository/api/")
         maven("https://repo.nexomc.com/releases")
         maven("https://repo.codemc.io/repository/maven-releases/")

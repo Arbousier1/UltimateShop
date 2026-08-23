@@ -2,20 +2,16 @@ package cn.superiormc.ultimateshop.utils;
 
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.managers.ErrorManager;
-import com.ezylang.evalex.EvaluationException;
-import com.ezylang.evalex.Expression;
-import com.ezylang.evalex.config.ExpressionConfiguration;
-import com.ezylang.evalex.data.EvaluationValue;
-import com.ezylang.evalex.functions.AbstractFunction;
-import com.ezylang.evalex.functions.FunctionParameter;
-import com.ezylang.evalex.parser.Token;
+import net.momirealms.sparrow.expr.CompiledExpression;
+import net.momirealms.sparrow.expr.ExpressionCompiler;
+import net.momirealms.sparrow.expr.binding.ParameterBinding;
+import net.momirealms.sparrow.expr.binding.ParameterBinder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Locale;
-import java.util.Map;
 
 public class MathUtil {
 
@@ -25,7 +21,7 @@ public class MathUtil {
 
     public static DecimalFormat decimalFormat;
 
-    private static ExpressionConfiguration expressionConfig;
+    private static ExpressionCompiler<Double> compiler;
 
     private static final int SIGMA_MAX_ITERATIONS = 100000;
 
@@ -37,8 +33,13 @@ public class MathUtil {
         integerFormat = new DecimalFormat(integerPattern, symbols);
         decimalFormat = new DecimalFormat(decimalPattern, symbols);
 
-        expressionConfig = ExpressionConfiguration.defaultConfiguration()
-                .withAdditionalFunctions(Map.entry("SIGMA", new SigmaFunction()));
+        ParameterBinder<Double> binder = name -> {
+            if ("i".equals(name)) {
+                return ParameterBinding.number(ctx -> ctx);
+            }
+            return ParameterBinding.number(ctx -> 0.0);
+        };
+        compiler = new ExpressionCompiler<>(binder);
     }
 
     public static double multiply(double left, double right) {
@@ -66,14 +67,19 @@ public class MathUtil {
         return doCalculate(mathStr, scale);
     }
 
-    public static BigDecimal doCalculate(String mathStr, int scale) {
+    public static BigDecimal doCalculate(String mathStr, int reqScale) {
         try {
             if (!ConfigManager.configManager.getBoolean("math.enabled")) {
                 return new BigDecimal(mathStr);
             }
-            return new Expression(mathStr, expressionConfig).evaluate()
-                    .getNumberValue()
-                    .setScale(scale, RoundingMode.HALF_UP);
+            double result;
+            if (mathStr.startsWith("SIGMA(")) {
+                result = evaluateSigma(mathStr);
+            } else {
+                CompiledExpression<Double> expr = compiler.compile(convertLogFunctions(mathStr));
+                result = expr.evaluate(0.0);
+            }
+            return BigDecimal.valueOf(result).setScale(reqScale, RoundingMode.HALF_UP);
         } catch (Throwable throwable) {
             if (ConfigManager.configManager.getBoolean("debug")) {
                 throwable.printStackTrace();
@@ -85,41 +91,61 @@ public class MathUtil {
         }
     }
 
-    @FunctionParameter(name = "start")
-    @FunctionParameter(name = "end")
-    @FunctionParameter(name = "body")
-    public static class SigmaFunction extends AbstractFunction {
-
-        @Override
-        public EvaluationValue evaluate(Expression expression, Token functionToken,
-                                         EvaluationValue... parameterValues)
-                throws EvaluationException {
-            int start = parameterValues[0].getNumberValue().intValue();
-            int end = parameterValues[1].getNumberValue().intValue();
-            String body = parameterValues[2].getStringValue();
-
-            if (start > end) {
-                return EvaluationValue.numberValue(BigDecimal.ZERO);
-            }
-
-            int count = end - start + 1;
-            if (count > SIGMA_MAX_ITERATIONS) {
-                throw new EvaluationException(functionToken,
-                        "SIGMA: too many iterations (" + count + "), maximum is " + SIGMA_MAX_ITERATIONS);
-            }
-
-            BigDecimal sum = BigDecimal.ZERO;
-            for (int i = start; i <= end; i++) {
-                Expression subExpr = new Expression(body, expressionConfig)
-                        .with("i", BigDecimal.valueOf(i));
-                try {
-                    sum = sum.add(subExpr.evaluate().getNumberValue());
-                } catch (com.ezylang.evalex.parser.ParseException e) {
-                    throw new EvaluationException(functionToken,
-                            "SIGMA: error in body expression: " + e.getMessage());
-                }
-            }
-            return EvaluationValue.numberValue(sum);
+    private static double evaluateSigma(String raw) {
+        int open = raw.indexOf('(');
+        int lastClose = raw.lastIndexOf(')');
+        if (open < 0 || lastClose < 0) {
+            throw new IllegalArgumentException("Invalid SIGMA expression: " + raw);
         }
+        String inner = raw.substring(open + 1, lastClose);
+        int firstComma = findUnquotedComma(inner);
+        int secondComma = findUnquotedComma(inner, firstComma + 1);
+        if (firstComma < 0 || secondComma < 0) {
+            throw new IllegalArgumentException("SIGMA requires 3 arguments: " + raw);
+        }
+        int start = (int) Double.parseDouble(inner.substring(0, firstComma).trim());
+        int end = (int) Double.parseDouble(inner.substring(firstComma + 1, secondComma).trim());
+        String body = inner.substring(secondComma + 1).trim();
+        // Strip surrounding double quotes if present (legacy EvalEx format)
+        if (body.length() >= 2 && body.charAt(0) == '"' && body.charAt(body.length() - 1) == '"') {
+            body = body.substring(1, body.length() - 1);
+        }
+        if (start > end) return 0.0;
+        int count = end - start + 1;
+        if (count > SIGMA_MAX_ITERATIONS) {
+            throw new ArithmeticException("SIGMA: too many iterations (" + count + "), maximum is " + SIGMA_MAX_ITERATIONS);
+        }
+        String convertedBody = convertLogFunctions(body);
+        CompiledExpression<Double> bodyExpr = compiler.compile(convertedBody);
+        double sum = 0.0;
+        for (int i = start; i <= end; i++) {
+            double result = bodyExpr.evaluate((double) i);
+            sum += result;
+        }
+        return sum;
+    }
+
+    private static int findUnquotedComma(String s) {
+        boolean inQuote = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') inQuote = !inQuote;
+            else if (c == ',' && !inQuote) return i;
+        }
+        return -1;
+    }
+
+    private static int findUnquotedComma(String s, int from) {
+        boolean inQuote = false;
+        for (int i = from; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') inQuote = !inQuote;
+            else if (c == ',' && !inQuote) return i;
+        }
+        return -1;
+    }
+
+    private static String convertLogFunctions(String expr) {
+        return expr.replaceAll("\\bLOG\\((?!10)", "LN(");
     }
 }

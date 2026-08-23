@@ -47,7 +47,7 @@ dependencies {
     compileOnly("me.TechsCode:UltraEconomyAPI:1.1.2")
     compileOnly("com.willfp:EcoBits:1.8.4")
     compileOnly(files("lib/RoyaleEconomyAPI.jar"))
-    implementation("com.ezylang:EvalEx:3.6.1")
+    implementation("net.momirealms:sparrow-expr:1.0")
     compileOnly("com.bencodez:votingplugin:6.16.3") {
         isTransitive = false
     }
