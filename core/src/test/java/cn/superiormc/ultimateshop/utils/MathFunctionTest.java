@@ -82,6 +82,9 @@ public class MathFunctionTest {
         check("-5+8", "-5+8", d("3"));
         check("2.5*4", "2.5*4", d("10"));
         check("native implicit multiplication", "2(3+4)", d("14"));
+        check("scientific notation", "1.5e2", d("150"));
+        check("hexadecimal number", "0xFF", d("255"));
+        check("implicit constant multiplication", "2PI", d("6.2831853072"));
 
         System.out.println("\n--- Native Sparrow functions ---");
         check("SQRT", "SQRT(16)", d("4"));
@@ -89,16 +92,22 @@ public class MathFunctionTest {
         check("ROUND", "ROUND(3.14159, 2)", d("3.14"));
         check("FLOOR", "FLOOR(3.9)", d("3"));
         check("CEILING", "CEILING(3.1)", d("4"));
+        check("CEIL alias", "CEIL(3.1)", d("4"));
+        check("CBRT", "CBRT(27)", d("3"));
         check("LOG", "LOG(2.718281828)", d("0.9999999998"));
         check("lowercase log", "log(2.718281828)", d("0.9999999998"));
         check("LOG10", "LOG10(1000)", d("3"));
         check("EXP", "EXP(1)", d("2.7182818285"));
         check("FACT", "FACT(5)", d("120"));
+        check("POW", "POW(2, 3)", d("8"));
         check("MIN", "MIN(3, 1, 4, 2)", d("1"));
         check("MAX", "MAX(3, 1, 4, 2)", d("4"));
         check("SUM", "SUM(1, 2, 3, 4)", d("10"));
         check("AVERAGE", "AVERAGE(1, 2, 3, 4)", d("2.5"));
         check("SWITCH", "SWITCH(2, 1, 100, 2, 200, 0)", d("200"));
+        check("CLAMP", "CLAMP(12, 0, 10)", d("10"));
+        check("CHANCE false", "CHANCE(0)", d("0"));
+        check("CHANCE true", "CHANCE(1)", d("1"));
         check("SINH", "SINH(0)", d("0"));
         check("COSH", "COSH(0)", d("1"));
         check("PI constant", "PI", d("3.1415926536"));
@@ -127,6 +136,12 @@ public class MathFunctionTest {
         check("IF AND", "IF(1<2 && 2<3, 400, 0)", d("400"));
         check("IF OR", "IF(1>2 || 2<3, 500, 0)", d("500"));
         check("IF NOT", "IF(NOT(1>2), 600, 0)", d("600"));
+        check("native AND keyword", "IF(1<2 AND 2<3, 700, 0)", d("700"));
+        check("native OR keyword", "IF(FALSE OR TRUE, 800, 0)", d("800"));
+        check("single equals operator", "IF(1=1, 900, 0)", d("900"));
+        check("angle-bracket inequality", "IF(1<>2, 1000, 0)", d("1000"));
+        check("single AND operator", "IF(TRUE & TRUE, 1100, 0)", d("1100"));
+        check("single OR operator", "IF(FALSE | TRUE, 1200, 0)", d("1200"));
 
         System.out.println("\n--- Native Sparrow SIGMA ---");
         check("sum i", "SIGMA(1, 10, i)", d("55"));

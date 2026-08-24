@@ -15,7 +15,7 @@
 - **`economy-model` 配置节**：在 `config.yml` 新增 `placeholder.data.economy-model` 配置节，包含价格衰减、时间恢复、经济环境指数、假期影响、额度池等全部模型参数，每个值都支持数字或 PlaceholderAPI 表达式。
 - **中国法定节假日 API 集成**：新增 `ChinaHolidayManager.java`，启动时异步拉取 [timor.tech](https://timor.tech/api/holiday) 免费 API，自动获取国务院公告的真实放假和调休数据（不可用时回退到 [NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn)）。区分中长假期（春节、国庆）与小假期（元旦、清明等），自动计算 `mu_i`，提供 `{china-holiday-beta}`、`{is-china-holiday}`、`{is-china-workday}`、`{china-holiday-name}`、`{mu-*-auto}` 等变量。
 - **CI 自动构建与依赖更新**：新增 `.github/workflows/build.yml`，push 时自动执行 `testMath` + `testDecay` + `testDecayExtended` + `testPureUtils` 全量测试验证 → `shadowJar` 打包并上传产物。新增 `.github/renovate.json`，Renovate Bot 每周末自动检测 Gradle 依赖更新并提 PR（排除本地 JAR 和 SNAPSHOT 版本）。
-- **文档补充**：在 README 中补充了 Sparrow 原生语法（基础运算、常量、布尔、数字函数、三角函数、双曲函数）、SIGMA 用法、文章模型变量映射与公式示例、节假日 API 配置与判定逻辑。
+- **文档补充**：在 README 和数学格式指南中补充了 Sparrow 原生语法（基础运算、常量、布尔、数字函数、三角函数、双曲函数）、SIGMA 用法、文章模型变量映射与公式示例、节假日 API 配置与判定逻辑。
 
 ## 🔒 No Need to Worry About Custom Item Changes
 
@@ -247,12 +247,14 @@ E ^ (-0.1 * 10)
 1 != 2
 1 < 2 && 2 < 3
 1 > 2 || 2 < 3
+1 < 2 AND 2 < 3
+FALSE OR TRUE
 NOT(1 > 2)
 IF(1 < 2, 100, 0)
 IF(1 < 2 && 2 < 3, 400, 0)
 ```
 
-布尔与或请用 `&&` 和 `||`，不要写成 `AND` / `OR` 中缀形式。
+布尔与或可以使用 `&&` / `||`，也可以使用 Sparrow 原生的 `AND` / `OR` 中缀形式。
 
 ### 数字函数
 

@@ -8,8 +8,7 @@ Change your `config.yml` file:
 
 ```yaml
 math:
-  # Enabled base math calculate?
-  # Will support + - * / only.
+  # Enable native Sparrow expression evaluation for numeric options.
   enabled: false
 ```
 
@@ -17,8 +16,7 @@ to
 
 ```yaml
 math:
-  # Enabled base math calculate?
-  # Will support + - * / only.
+  # Enable native Sparrow expression evaluation for numeric options.
   enabled: true
 ```
 
@@ -39,6 +37,8 @@ placeholder:
 ```
 
 ## Set dynamic value for your product configs
+
+Expressions use native Sparrow syntax. Function calls require parentheses, trigonometric functions use radians, and `SIGMA` takes an unquoted numeric body.
 
 Open one of your shop configs, find the product you want to enable dynamic price.
 
