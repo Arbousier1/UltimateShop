@@ -87,7 +87,7 @@ dependencies {
 
 tasks.register<JavaExec>("testMath") {
     group = "verification"
-    description = "Run Sparrow + legacy expression compatibility tests"
+    description = "Run native Sparrow expression and SIGMA tests"
     mainClass.set("cn.superiormc.ultimateshop.utils.MathFunctionTest")
     dependsOn(tasks.named("testClasses"))
     classpath = sourceSets["test"].runtimeClasspath

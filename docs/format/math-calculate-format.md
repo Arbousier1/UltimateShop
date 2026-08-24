@@ -1,87 +1,157 @@
-# ➗Math Calculate Format
+# ➗ Math Calculate Format
 
-Unlike most plugins, UltimateShop allows you to fill in the Placeholder API and mathematical calculation format in almost all options applicable to numbers, making it easy to set the price, buy/sell limits, and more you want.
+UltimateShop evaluates numeric expressions directly with **Sparrow Expression 1.0**. The
+expression is compiled after UltimateShop and PlaceholderAPI values have been replaced.
+There is no legacy expression conversion layer.
 
 {% hint style="info" %}
-You need enable `math.enabled` option in your `config.yml` file to use this feature.
+Enable `math.enabled` in `config.yml` before using expressions.
 {% endhint %}
 
-## List of match calculate format
+`Sparrow` uses `double` internally. UltimateShop applies `math.scale` to the final
+result, but expressions should not be used for integers that require more than 15–16
+significant digits or for exact high-precision accounting.
 
-`max` - Compare two number and return bigger value. (`max(4,5)`)
+## Quick examples
 
-`min` - Compare two number and return smaller value. (`min(4,5)`)
+`amount` can contain a complete Sparrow expression:
 
-`()` - Create a parenthetical expression which will be evaluated first (`3 * (4 + 1)`)
+```yaml
+buy-prices:
+  1:
+    economy-type: exp
+    amount: "MAX(1, 5 + ({buy-times-server} - {sell-times-server}) * 0.2)"
 
-`$` - Denotes a variable (`$1 / 3`)
+sell-limits:
+  global: "FLOOR(100 / (1 + {sell-times-server}))"
+```
 
-`e` - Euler's constant (`log(e)`)
+PlaceholderAPI values are replaced first:
 
-`pi` - pi (`sin(pi)`)
+```yaml
+amount: "%vault_eco_balance% * 0.05"
+```
 
-`+` - Add two numbers (`1 + 1`)
+## Values and constants
 
-`-` - Subtract two numbers, or negate one (`3-2`, `-(4+2)`)
+| Form | Example | Notes |
+|---|---|---|
+| Decimal | `12`, `3.5`, `.25` | Stored as `double` |
+| Scientific notation | `1.5e2`, `2E-3` | Signed exponents are supported |
+| Hexadecimal | `0xFF` | Converted to `double` |
+| Constants | `TRUE`, `FALSE`, `PI`, `E` | Names are case-insensitive |
+| Grouping | `(2 + 3) * 4` | Parentheses may be nested |
 
-`/` - Divide two numbers (`3 / 4`)
+Unknown identifiers are rejected. UltimateShop placeholders such as
+`{buy-times-player}` must be replaced with numbers before Sparrow compiles the expression.
+The only expression variable supplied by UltimateShop is `i`, and it is available only
+inside a `SIGMA` body.
 
-`*` - Multiply two numbers (`2 * 3`)
+## Operators
 
-`^` - Raise one number to the power of another (`3^3`)
+From highest to lowest precedence:
 
-`%` - Take the modulus, or division remainder, of one number with another (`7 % 4`)
+| Operators | Example |
+|---|---|
+| Function calls and parentheses | `MAX(10, (2 + 3) * 4)` |
+| Power `^` | `2 ^ 10` |
+| Unary `+`, `-`, `!`, `NOT` | `NOT(FALSE)` |
+| `*`, `/`, `%` | `10 % 3` |
+| `+`, `-` | `10 - 3 + 2` |
+| `>`, `>=`, `<`, `<=` | `12 >= 10` |
+| `=`, `==`, `!=`, `<>` | `1 == 1` |
+| `&`, `&&`, `AND` | `1 < 2 AND 2 < 3` |
+| <code>&#124;</code>, <code>&#124;&#124;</code>, `OR` | `FALSE OR TRUE` |
 
-`abs` - Take the absolute value of a number (`abs$1`, `abs-1`)
+Comparisons and logical operators return `1` or `0`. UltimateShop also enables
+Sparrow's native implicit multiplication option, so `2(3 + 4)` and `2PI` are accepted.
+Using an explicit `*` is still recommended in configuration files for readability.
 
-`round` - Rounds a number to the nearest integer (`round1.5`, `round(2.3)`)
+## Common numeric functions
 
-`ceil` - Rounds a number up to the nearest integer (`ceil1.05`)
+Every function call requires parentheses. Function names are case-insensitive.
 
-`floor` - Rounds a number down to the nearest integer (`floor0.95`)
+| Function | Example |
+|---|---|
+| Absolute value | `ABS(-5)` |
+| Square/cube root | `SQRT(16)`, `CBRT(27)` |
+| Rounding | `ROUND(12.36, 1)`, `FLOOR(3.9)`, `CEIL(3.1)` |
+| Exponential/logarithm | `EXP(1)`, `LOG(E)`, `LOG10(100)` |
+| Power/factorial | `POW(2, 3)`, `FACT(5)` |
+| Aggregate | `SUM(1, 2, 3)`, `AVERAGE(2, 4, 6)` |
+| Bounds | `MIN(8, 3, 5)`, `MAX(8, 3, 5)`, `CLAMP(12, 0, 10)` |
+| Conditional | `IF(1 < 2, 100, 0)` |
+| Selection | `SWITCH(2, 1, 100, 2, 200, 0)` |
+| Random | `RANDOM()`, `RANDOM(5, 15)`, `RANDOM_INT(1, 7)` |
+| Probability | `IF(CHANCE(0.25), 2, 1)` |
 
-`rand` - Generate a random number between 0 and the specified upper bound (`rand4`)
+Sparrow also supplies `SIGN`, `HYPOT`, `LERP`, `INVERSE_LERP`, `SMOOTHSTEP`,
+`FMA`, `APPROX_EQ`, `IS_FINITE`, and `IS_NAN`.
 
-`log` - Get the natural logarithm of a number (`log(e)`)
+## Trigonometric functions
 
-`sqrt` - Get the square root of a number (`sqrt4`)
+All native trigonometric inputs and inverse-function outputs use **radians**:
 
-`cbrt` - Get the cube root of a number (`cbrt(8)`)
+```text
+SIN(PI / 2)
+COS(PI)
+TAN(PI / 4)
+ASIN(1)
+ATAN2(1, 1)
+```
 
-`sin` - Get the sine of a number (`sin$2`)
+Use `RAD` and `DEG` for explicit conversion:
 
-`cos` - Get the cosine of a number (`cos(2*pi)`)
+```text
+SIN(RAD(90))
+RAD(180)
+DEG(PI)
+```
 
-`tan` - Get the tangent of a number (`tanpi`)
+Additional native functions include `COT`, `CSC`, `SEC`, `ACOT`, `SINH`,
+`COSH`, `TANH`, `ASINH`, `ACOSH`, `ATANH`, `COTH`, `CSCH`, `SECH`,
+and `ACOTH`.
 
-`asin` - Get the arcsine of a number (`asin$2`)
+## Custom numeric function: SIGMA
 
-`acos` - Get the arccosine of a number (`acos0.45`)
+UltimateShop registers `SIGMA` through Sparrow's native `FunctionBinder`:
 
-`atan` - Get the arctangent of a number (`atan1`)
+```text
+SIGMA(start, end, body)
+```
 
-`sinh` - Get the hyperbolic sine of a number (`sinh(4)`)
+The range is inclusive and the body is a numeric Sparrow expression. Use `i` as the
+current index:
 
-`cosh` - Get the hyperbolic cosine of a number (`sinh(4)`)
+```text
+SIGMA(1, 10, i)                         = 55
+SIGMA(1, 10, i * i)                     = 385
+SIGMA(1, 10, IF(i % 2 == 0, i, 0))      = 30
+1 + SIGMA(1, 3, i)                      = 7
+SIGMA(1, 3, SIGMA(1, i, i))             = 10
+```
 
-`true` - Boolean constant representing 1
+The body is **not a string**. Do not write `SIGMA(1, 10, "i * i")`.
 
-`false` - Boolean constant representing 0
+Safety limits:
 
-`=` - Compare if two numbers are equal (`1 = 1` will be `1`, `1 = 3` will be `0`), also accepts `==`
+- at most 100,000 iterations for one `SIGMA` call;
+- at most 1,000,000 total iterations in one complete expression;
+- at most 32 nested `SIGMA` calls;
+- non-finite bounds, body values, sums, and final results are rejected.
 
-`!=` - Compare if two numbers are not equal (`1 != 2` will be `1`, `1 != 1` will be `0`)
+## Migration from older formula examples
 
-`>` - Compare if one number is greater than another (`1 > 0`)
+Use the native Sparrow form on the right:
 
-`<` - Compare if one number is less than another (`0 < 1`)
+| Old form | Native Sparrow form |
+|---|---|
+| `abs-1` or `abs$1` | `ABS(-1)` |
+| `round1.5` | `ROUND(1.5)` |
+| `ceil1.05` | `CEIL(1.05)` |
+| `rand4` | `RANDOM(0, 4)` |
+| `sin$2` | `SIN(2)` |
+| `SIGMA(1, 10, "i")` | `SIGMA(1, 10, i)` |
 
-`>=` - Compare if one number is greater than or equal to another (`1 >= 1`)
-
-`<=` - Compare if one number is less than or equal to another (`0 <= 1`)
-
-`|` - Boolean or (`true | false`), also accepts `||`
-
-`&` - Boolean and (`true & true`), also accepts `&&`
-
-`!` - Boolean not/inverse (`!true`)
+`SINR` aliases, `NULL`, and `COALESCE` are not registered. Use Sparrow's native
+functions and numeric expressions directly.

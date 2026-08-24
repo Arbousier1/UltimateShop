@@ -6,8 +6,8 @@
 
 相比原项目，本分支有以下代码层面的改动：
 
-- **Sparrow Expression 数学引擎**：使用 `sparrow-expr 1.0` 计算表达式，并提供 EvalEx 兼容层，保留旧配置中的隐式乘法、角度制三角函数、`NULL`/`COALESCE` 等语法。
-- **兼容 SIGMA 自定义函数**：保留 `SIGMA(start, end, "body")` 求和函数，并支持它参与完整表达式、表达式边界、多次调用及嵌套调用。
+- **原生 Sparrow Expression 数学引擎**：使用 `sparrow-expr 1.0` 直接编译和计算表达式，不经过额外语法转换层。
+- **原生 SIGMA 自定义函数**：通过 Sparrow `FunctionBinder` 注册 `SIGMA(start, end, body)` 求和函数，支持完整表达式、表达式边界、多次调用及嵌套调用。
 - **数学测试与构建验证**：新建 `DecayCalculator.java` 纯 Java 计算类，从 `AmountVariableUtil` 提取核心公式逻辑（p(n)/M(n)/ε(t)/Q/n(t)/假期影响），不依赖 Bukkit API 可直接测试。新增 3 个测试文件共 2176 个测试用例（`DecayCalculatorTest`、`DecayCalculatorExtendedTest`、`AmountVariableUtilPureTest`），覆盖每个公式的边界条件、属性不变式、数值稳定性、并发安全和性能基准；新增 `:core:testDecay`、`:core:testDecayExtended`、`:core:testPureUtils`、`:core:testAll` 构建任务。
 - **动态经济模型变量**：新增 `AmountVariableUtil.java`（~360 行）统一管理所有变量替换逻辑；重构 `ObjectLimit`、`ObjectSinglePrice`、`ObjectSingleProduct`，将原来分散在三处的重复变量替换代码集中到一处。新增 70+ 个文章模型变量，包括 `{P}`、`{t}`、`{p_0}`、`{Q_B}`、`{gamma}`、`{T}`、`{epsilon}`、`{iota}`、`{alpha_*}`、`{mu_*}`、`{sigma_*}`、`{lambda}`、`{delta}`、`{tau}`、`{nu}`、`{T_history}` 等，以及 `{epsilon-calculated}` 预计算环境指数、`{Q}` 自动计算额度。
 - **历史周期序列存储**：在 `ObjectUseTimesCache` 中新增 `PeriodRecord` 内部类和 `sellHistory`/`buyHistory` 列表，每次周期重置时自动归档当前周期的售出/买入次数和重置时间点。最多保留 `max-history-periods` 个周期（默认 30，可配置）。数据通过 YAML 和 SQL（JSON 列）持久化。`{sell-decayed-player}`、`{sell-decayed-server}`、`{buy-decayed-player}`、`{buy-decayed-server}` 变量基于真实历史周期序列，按文章公式 `FLOOR(n_i(0) / (E ^ (delta * (t_i - tau)) + 1))` 对每个周期分别计算衰减后求和，完全还原文章中的多历史周期序列模型。
@@ -15,7 +15,7 @@
 - **`economy-model` 配置节**：在 `config.yml` 新增 `placeholder.data.economy-model` 配置节，包含价格衰减、时间恢复、经济环境指数、假期影响、额度池等全部模型参数，每个值都支持数字或 PlaceholderAPI 表达式。
 - **中国法定节假日 API 集成**：新增 `ChinaHolidayManager.java`，启动时异步拉取 [timor.tech](https://timor.tech/api/holiday) 免费 API，自动获取国务院公告的真实放假和调休数据（不可用时回退到 [NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn)）。区分中长假期（春节、国庆）与小假期（元旦、清明等），自动计算 `mu_i`，提供 `{china-holiday-beta}`、`{is-china-holiday}`、`{is-china-workday}`、`{china-holiday-name}`、`{mu-*-auto}` 等变量。
 - **CI 自动构建与依赖更新**：新增 `.github/workflows/build.yml`，push 时自动执行 `testMath` + `testDecay` + `testDecayExtended` + `testPureUtils` 全量测试验证 → `shadowJar` 打包并上传产物。新增 `.github/renovate.json`，Renovate Bot 每周末自动检测 Gradle 依赖更新并提 PR（排除本地 JAR 和 SNAPSHOT 版本）。
-- **文档补充**：在 README 中补充了 Sparrow 的 EvalEx 兼容语法（基础运算、常量、布尔、数字函数、三角函数、双曲函数）、SIGMA 用法、文章模型变量映射与公式示例、节假日 API 配置与判定逻辑。
+- **文档补充**：在 README 和数学格式指南中补充了 Sparrow 原生语法（基础运算、常量、布尔、数字函数、三角函数、双曲函数）、SIGMA 用法、文章模型变量映射与公式示例、节假日 API 配置与判定逻辑。
 
 ## 🔒 No Need to Worry About Custom Item Changes
 
@@ -196,7 +196,7 @@ math:
   static-scale: false
 ```
 
-当 `math.enabled` 为 `false` 时，数值会按普通数字读取；为 `true` 时，会通过 Sparrow Expression 计算表达式，并按需要使用 `math.scale` 进行四舍五入。兼容层会继续接受本分支原有的 EvalEx 表达式语法。
+当 `math.enabled` 为 `false` 时，数值会按普通数字读取；为 `true` 时，表达式会直接交给 Sparrow Expression 计算，并按需要使用 `math.scale` 进行四舍五入。
 
 ### 基础写法
 
@@ -224,7 +224,6 @@ PI
 E
 TRUE
 FALSE
-NULL
 ```
 
 指数写法请直接使用 `E ^ x`。
@@ -248,12 +247,14 @@ E ^ (-0.1 * 10)
 1 != 2
 1 < 2 && 2 < 3
 1 > 2 || 2 < 3
+1 < 2 AND 2 < 3
+FALSE OR TRUE
 NOT(1 > 2)
 IF(1 < 2, 100, 0)
 IF(1 < 2 && 2 < 3, 400, 0)
 ```
 
-布尔与或请用 `&&` 和 `||`，不要写成 `AND` / `OR` 中缀形式。
+布尔与或可以使用 `&&` / `||`，也可以使用 Sparrow 原生的 `AND` / `OR` 中缀形式。
 
 ### 数字函数
 
@@ -271,23 +272,22 @@ MAX(3, 1, 4, 2)
 SUM(1, 2, 3)
 AVERAGE(1, 2, 3)
 RANDOM()
-COALESCE(NULL, 5)
 SWITCH(2, 1, 100, 2, 200, 0)
 ```
 
-`COALESCE` 会返回第一个非空值。`SWITCH(value, case1, result1, case2, result2, default)` 会返回匹配项或默认值。
+`SWITCH(value, case1, result1, case2, result2, default)` 会返回匹配项或默认值。
 
 ### 三角函数
 
-默认三角函数使用角度制：
+Sparrow 原生三角函数使用弧度，反三角函数也返回弧度：
 
 ```text
-SIN(90)
-COS(180)
-TAN(45)
-COT(45)
-SEC(60)
-CSC(30)
+SIN(PI / 2)
+COS(PI)
+TAN(PI / 4)
+COT(PI / 4)
+SEC(PI / 3)
+CSC(PI / 6)
 ASIN(1)
 ACOS(-1)
 ATAN(1)
@@ -295,23 +295,15 @@ ACOT(1)
 ATAN2(1, 1)
 ```
 
-弧度版本使用 `R` 后缀：
+角度与弧度之间可以使用 `RAD` 和 `DEG` 转换：
 
 ```text
-SINR(1.5707963267948966)
-COSR(3.141592653589793)
-TANR(0.7853981633974483)
-COTR(0.7853981633974483)
-SECR(1.0471975511965976)
-CSCR(0.5235987755982988)
-ASINR(1)
-ACOSR(-1)
-ATANR(1)
-ACOTR(1)
-ATAN2R(1, 1)
+SIN(RAD(90))
 RAD(180)
-DEG(3.141592653589793)
+DEG(PI)
 ```
+
+不提供 `SINR`、`COSR` 等旧别名；`SIN`、`COS` 等函数本身就是弧度版本。
 
 双曲函数也可用：
 
@@ -362,44 +354,44 @@ amount: "MAX(10, 100 + {buy-total-server} - {sell-total-server})"
 ```text
 {math_1+1}
 {math_ROUND(10/3, 2)}
-{math_SIGMA(1, 10, "i")}
+{math_SIGMA(1, 10, i)}
 ```
 
 ### 自定义函数 `SIGMA`
 
-UltimateShop 自带一个自定义数学函数：
+UltimateShop 通过 Sparrow `FunctionBinder` 注册一个原生数值函数：
 
 ```text
-SIGMA(start, end, "body")
+SIGMA(start, end, body)
 ```
 
-`SIGMA` 通过 Sparrow 的自定义函数绑定执行，会从 `start` 一直循环到 `end`，循环变量是 `i`，可在 `body` 里直接使用。旧写法的字符串 body 会自动转成 Sparrow 数值表达式，也可以直接写成 `SIGMA(1, 10, i * i)`。`start` 和 `end` 可以是表达式，SIGMA 也可以出现在普通表达式中，或在同一表达式中调用多次。
+`SIGMA` 会从 `start` 一直循环到 `end`，循环变量是 `i`，第三个参数必须直接写 Sparrow 数值表达式，不能写成字符串。`start` 和 `end` 也可以是表达式；SIGMA 可以嵌入普通表达式、调用多次或嵌套调用。
 
 ```text
-SIGMA(1, 10, "i")
-SIGMA(1, 10, "i * i")
-SIGMA(1, 5, "i ^ 3")
-SIGMA(1, 4, "FACT(i)")
-SIGMA(1, 10, "IF(i % 2 == 0, i, 0)")
-SIGMA(1, 5, "E ^ (-0.1 * i)")
+SIGMA(1, 10, i)
+SIGMA(1, 10, i * i)
+SIGMA(1, 5, i ^ 3)
+SIGMA(1, 4, FACT(i))
+SIGMA(1, 10, IF(i % 2 == 0, i, 0))
+SIGMA(1, 5, E ^ (-0.1 * i))
 ```
 
 示例结果：
 
 ```text
-SIGMA(1, 10, "i") = 55
-SIGMA(1, 10, "i * i") = 385
-SIGMA(1, 5, "i ^ 3") = 225
-SIGMA(5, 1, "i") = 0
+SIGMA(1, 10, i) = 55
+SIGMA(1, 10, i * i) = 385
+SIGMA(1, 5, i ^ 3) = 225
+SIGMA(5, 1, i) = 0
 ```
 
-如果在 YAML 里写 `SIGMA`，而 body 里又用了双引号，建议外层整段用单引号包起来：
+在 YAML 中可以直接写：
 
 ```yaml
-amount: 'SIGMA(1, 10, "i * i")'
+amount: "SIGMA(1, 10, i * i)"
 ```
 
-`SIGMA` 单次最多允许 100000 次迭代、单个表达式合计最多 1000000 次、最多嵌套 32 层，用于保护服务器性能。未知变量不会被当作 `0`，而是按无效表达式报错。
+旧的 `SIGMA(1, 10, "i")` 字符串 body 写法不会被兼容转换。`SIGMA` 单次最多允许 100000 次迭代、单个表达式合计最多 1000000 次、最多嵌套 32 层。未知变量不会被当作 `0`，而是按无效表达式报错。
 
 ### 文章经济模型参数对照
 
@@ -729,7 +721,7 @@ sell-limits:
 | `iota(t)` | 特别物价指数，例如活动期间指定物品涨价 |
 | `t` | 当前时间、周期或距离出售记录产生的时间 |
 
-文章中的核心单价模型可以转成 Sparrow 兼容表达式（插件内置已做 `round{·, 2}` 处理）：
+文章中的核心单价模型可以转成 Sparrow 原生表达式（插件内置已做 `round{·, 2}` 处理）：
 
 ```text
 ROUND(MAX(0.01, epsilon * iota * p_0 * E ^ (-lambda * n)), 2)
@@ -843,7 +835,7 @@ amount: "{epsilon} * 1.25 * 100 * E ^ (-{lambda} * {sell-total-player})"
 
 #### 四舍五入
 
-文章里的 `round(x, n)` 对应 Sparrow 兼容表达式的：
+文章里的 `round(x, n)` 对应 Sparrow 原生表达式的：
 
 ```text
 ROUND(x, n)

@@ -307,6 +307,8 @@ use-times:
   auto-reset-mode: true
 
 math:
+  # Evaluate numeric options directly with Sparrow Expression.
+  # Example: MAX(1, 5 + 2 * 3); SIGMA uses an unquoted numeric body.
   enabled: true
   scale: 2
   static-scale: false
